@@ -87,6 +87,36 @@ def ensure_data_dir():
     """Crear directorio de datos si no existe"""
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(os.path.join(DATA_DIR, "backups"), exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, "auto_backups"), exist_ok=True)
+
+def auto_backup():
+    """
+    Crear backup automático diario
+    Se ejecuta al inicio de la app
+    Mantiene últimos 7 días de backups
+    """
+    if not os.path.exists(STATE_FILE):
+        return
+    
+    auto_backup_dir = os.path.join(DATA_DIR, "auto_backups")
+    date_str = datetime.now().strftime("%Y%m%d")
+    backup_file = os.path.join(auto_backup_dir, f"state_{date_str}.json")
+    
+    # Solo crear backup si no existe uno de hoy
+    if not os.path.exists(backup_file):
+        import shutil
+        shutil.copy(STATE_FILE, backup_file)
+        
+        # Limpiar backups antiguos (mantener últimos 7 días)
+        all_backups = sorted([
+            f for f in os.listdir(auto_backup_dir) 
+            if f.startswith("state_") and f.endswith(".json")
+        ])
+        
+        if len(all_backups) > 7:
+            for old_backup in all_backups[:-7]:
+                os.remove(os.path.join(auto_backup_dir, old_backup))
+
 
 def save_state(state: AppState):
     """Guardar estado en JSON"""
@@ -542,14 +572,10 @@ def compute_next_review_date(card: Card, interval_days: int) -> str:
 # STREAMLIT APP INITIALIZATION
 # ============================================================================
 
-st.set_page_config(
-    page_title="Simulador UIR/UIC",
-    page_icon="🧠",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Ejecutar backup automático al inicio
+auto_backup()
 
-# Inicializar estado de sesión
+# Inicializar session state
 if 'state' not in st.session_state:
     st.session_state.state = load_state()
 
