@@ -158,9 +158,71 @@ def compute_uir_from_p(t: float, P: float, epsilon: float = 0.01) -> float:
     UIR = -t / np.log(P_smooth)
     return max(1.0, UIR)  # mínimo 1 día
 
+def get_spanish_stop_words() -> List[str]:
+    """
+    Retorna lista completa de stop words en español
+    Incluye palabras interrogativas, conectores y palabras comunes sin valor semántico
+    """
+    return [
+        # Palabras interrogativas (lo más importante para filtrar)
+        'qué', 'que', 'cuál', 'cual', 'cuáles', 'cuales', 'cómo', 'como',
+        'dónde', 'donde', 'cuándo', 'cuando', 'cuánto', 'cuanto', 'cuántos', 'cuantos',
+        'cuánta', 'cuanta', 'cuántas', 'cuantas', 'quién', 'quien', 'quiénes', 'quienes',
+        'por', 'qué', 'para', 'porqué', 'porque',
+        
+        # Verbos copulativos y auxiliares comunes en preguntas
+        'es', 'son', 'era', 'eran', 'fue', 'fueron', 'sea', 'sean',
+        'está', 'esta', 'están', 'estan', 'estaba', 'estaban',
+        'ser', 'estar', 'hay', 'haber', 'sido', 'estado',
+        'tiene', 'tienen', 'tenía', 'tenia', 'tenían', 'tenian',
+        'hace', 'hacen', 'hizo', 'hicieron',
+        
+        # Verbos comunes en preguntas
+        'significa', 'significan', 'significa', 'sirve', 'sirven',
+        'funciona', 'funcionan', 'define', 'definen',
+        'representa', 'representan', 'implica', 'implican',
+        
+        # Artículos
+        'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
+        
+        # Preposiciones
+        'a', 'ante', 'bajo', 'con', 'contra', 'de', 'desde', 'en',
+        'entre', 'hacia', 'hasta', 'mediante', 'para', 'por', 'según',
+        'sin', 'sobre', 'tras', 'durante', 'versus', 'vía',
+        
+        # Conjunciones
+        'y', 'e', 'o', 'u', 'pero', 'sino', 'aunque', 'si', 'ni',
+        'que', 'porque', 'pues', 'ya', 'sea', 'bien', 'así',
+        
+        # Pronombres
+        'yo', 'tú', 'tu', 'él', 'el', 'ella', 'nosotros', 'vosotros', 'ellos', 'ellas',
+        'me', 'te', 'se', 'nos', 'os', 'le', 'les', 'lo', 'la', 'los', 'las',
+        'mi', 'mis', 'su', 'sus', 'nuestro', 'nuestra', 'vuestro', 'vuestra',
+        'este', 'esta', 'estos', 'estas', 'ese', 'esa', 'esos', 'esas',
+        'aquel', 'aquella', 'aquellos', 'aquellas', 'esto', 'eso', 'aquello',
+        
+        # Adverbios comunes
+        'muy', 'más', 'mas', 'menos', 'poco', 'mucho', 'bastante', 'demasiado',
+        'tan', 'tanto', 'también', 'tampoco', 'sí', 'si', 'no', 'nunca', 'siempre',
+        'jamás', 'jamas', 'apenas', 'solo', 'sólo', 'solamente',
+        'aquí', 'aqui', 'ahí', 'ahi', 'allí', 'alli', 'acá', 'aca', 'allá', 'alla',
+        'hoy', 'ayer', 'mañana', 'ahora', 'luego', 'después', 'despues', 'antes',
+        
+        # Otros
+        'otro', 'otra', 'otros', 'otras', 'mismo', 'misma', 'mismos', 'mismas',
+        'tal', 'tales', 'todo', 'toda', 'todos', 'todas', 'algún', 'algun',
+        'alguno', 'alguna', 'algunos', 'algunas', 'ningún', 'ningun', 'ninguno', 'ninguna',
+        'cada', 'varios', 'varias', 'ambos', 'ambas', 'cualquier', 'cualesquiera',
+        
+        # Palabras de relleno
+        'cosa', 'cosas', 'algo', 'nada', 'alguien', 'nadie', 'vez', 'veces'
+    ]
+
 def compute_tfidf(cards: List[Card]) -> Tuple[Optional[np.ndarray], Optional[TfidfVectorizer]]:
     """
     Construye matriz TF-IDF de preguntas + respuestas
+    Filtra stop words en español (palabras interrogativas, conectores, etc.)
+    para enfocarse en palabras núcleo con valor semántico
     
     Returns:
         (matriz TF-IDF, vectorizer) o (None, None) si no hay suficientes tarjetas
@@ -172,16 +234,23 @@ def compute_tfidf(cards: List[Card]) -> Tuple[Optional[np.ndarray], Optional[Tfi
     documents = [f"{card.question} {card.answer}" for card in cards]
     
     try:
+        # Obtener stop words personalizadas
+        custom_stop_words = get_spanish_stop_words()
+        
         vectorizer = TfidfVectorizer(
             max_features=100,
-            stop_words=None,  # podríamos añadir stop words en español
-            ngram_range=(1, 2)
+            stop_words=custom_stop_words,  # Filtrar palabras sin valor semántico
+            ngram_range=(1, 2),  # Unigramas y bigramas
+            lowercase=True,  # Normalizar a minúsculas
+            strip_accents='unicode',  # Normalizar acentos para mejor matching
+            token_pattern=r'(?u)\b\w\w+\b'  # Palabras de 2+ caracteres
         )
         tfidf_matrix = vectorizer.fit_transform(documents)
         return tfidf_matrix.toarray(), vectorizer
     except Exception as e:
         st.warning(f"Error calculando TF-IDF: {e}")
         return None, None
+
 
 def compute_similarity_matrix(tfidf_matrix: np.ndarray) -> np.ndarray:
     """
