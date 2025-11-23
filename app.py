@@ -680,28 +680,167 @@ def page_dashboard():
         st.session_state.current_page = "Sesión de Repaso"
         st.rerun()
     
-    # Gráfica de progreso
+    # Gráficas mejoradas
     if state.cards:
-        st.subheader("Progreso de Repasos")
+        # Tabs para organizar visualizaciones
+        tab1, tab2, tab3, tab4 = st.tabs(["📈 Actividad", "📊 Distribuciones", "🔄 Retención", "📅 Timeline"])
         
-        # Recopilar historial de todos los repasos
-        all_reviews = []
-        for card in state.cards:
-            for review in card.history:
-                all_reviews.append({
-                    'timestamp': datetime.fromisoformat(review.timestamp),
-                    'grade': review.grade
-                })
-        
-        if all_reviews:
-            df_reviews = pd.DataFrame(all_reviews)
-            df_reviews['date'] = df_reviews['timestamp'].dt.date
-            daily_reviews = df_reviews.groupby('date').size().reset_index(name='count')
+        with tab1:
+            st.subheader("Actividad de Repasos")
             
-            fig = px.bar(daily_reviews, x='date', y='count', 
-                        title="Repasos por Día",
-                        labels={'date': 'Fecha', 'count': 'Número de Repasos'})
-            st.plotly_chart(fig, use_container_width=True)
+            # Recopilar historial de todos los repasos
+            all_reviews = []
+            for card in state.cards:
+                for review in card.history:
+                    timestamp = review.timestamp if hasattr(review, 'timestamp') else review.get('timestamp', '')
+                    grade = review.grade if hasattr(review, 'grade') else review.get('grade', 0)
+                    if timestamp:
+                        all_reviews.append({
+                            'timestamp': datetime.fromisoformat(timestamp),
+                            'grade': grade
+                        })
+            
+            if all_reviews:
+                df_reviews = pd.DataFrame(all_reviews)
+                df_reviews['date'] = df_reviews['timestamp'].dt.date
+                
+                # Gráfica de barras por día
+                daily_reviews = df_reviews.groupby('date').size().reset_index(name='count')
+                fig1 = px.bar(daily_reviews, x='date', y='count', 
+                            title="Repasos por Día",
+                            labels={'date': 'Fecha', 'count': 'Número de Repasos'})
+                st.plotly_chart(fig1, use_container_width=True)
+                
+                # Calendario de calor (heatmap de actividad)
+                df_reviews['day_of_week'] = df_reviews['timestamp'].dt.day_name()
+                df_reviews['hour'] = df_reviews['timestamp'].dt.hour
+                heatmap_data = df_reviews.groupby(['day_of_week', 'hour']).size().reset_index(name='count')
+                
+                # Ordenar días de la semana
+                day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                heatmap_pivot = heatmap_data.pivot(index='day_of_week', columns='hour', values='count').fillna(0)
+                heatmap_pivot = heatmap_pivot.reindex(day_order)
+                
+                fig_heat = px.imshow(heatmap_pivot,
+                                    labels=dict(x="Hora del Día", y="Día de la Semana", color="Repasos"),
+                                    title="Patrón de Actividad (Heatmap)",
+                                    color_continuous_scale="Blues")
+                st.plotly_chart(fig_heat, use_container_width=True)
+            else:
+                st.info("No hay repasos registrados aún.")
+        
+        with tab2:
+            st.subheader("Distribuciones")
+            
+            col_a, col_b = st.columns(2)
+            
+            with col_a:
+                # Distribución de UIC
+                uic_values = [c.UIC_local for c in state.cards]
+                fig_uic = px.histogram(x=uic_values, nbins=20,
+                                      title="Distribución de UIC Local",
+                                      labels={'x': 'UIC Local', 'y': 'Frecuencia'})
+                st.plotly_chart(fig_uic, use_container_width=True)
+            
+            with col_b:
+                # Distribución de UIR
+                uir_values = [c.UIR_effective for c in state.cards]
+                fig_uir = px.histogram(x=uir_values, nbins=20,
+                                      title="Distribución de UIR Efectivo",
+                                      labels={'x': 'UIR Efectivo (días)', 'y': 'Frecuencia'})
+                st.plotly_chart(fig_uir, use_container_width=True)
+            
+            # Distribución de intervalos
+            intervals = []
+            for c in state.cards:
+                if c.next_review:
+                    try:
+                        next_dt = datetime.fromisoformat(c.next_review)
+                        days_until = (next_dt - datetime.now()).days
+                        intervals.append(max(0, days_until))
+                    except:
+                        pass
+            
+            if intervals:
+                fig_int = px.histogram(x=intervals, nbins=30,
+                                      title="Distribución de Próximos Repasos",
+                                      labels={'x': 'Días hasta próximo repaso', 'y': 'Frecuencia'})
+                st.plotly_chart(fig_int, use_container_width=True)
+        
+        with tab3:
+            st.subheader("Curva de Retención Promedio")
+            
+            # Calcular curva P(t) = exp(-t/UIR_eff) promedio
+            avg_uir_eff = np.mean([c.UIR_effective for c in state.cards]) if state.cards else 7.0
+            
+            t_values = np.linspace(0, 90, 100)
+            p_values = np.exp(-t_values / avg_uir_eff)
+            
+            fig_retention = go.Figure()
+            fig_retention.add_trace(go.Scatter(x=t_values, y=p_values,
+                                              mode='lines',
+                                              name=f'P(t) = exp(-t/{avg_uir_eff:.1f})',
+                                              line=dict(color='blue', width=3)))
+            
+            # Línea de referencia (37% en t=UIR)
+            fig_retention.add_hline(y=0.37, line_dash="dash", line_color="red",
+                                   annotation_text="37% (1/e)")
+            fig_retention.add_vline(x=avg_uir_eff, line_dash="dash", line_color="red",
+                                   annotation_text=f"UIR={avg_uir_eff:.1f}d")
+            
+            fig_retention.update_layout(
+                title="Curva de Retención Promedio",
+                xaxis_title="Tiempo (días)",
+                yaxis_title="Probabilidad de Recordar",
+                yaxis=dict(range=[0, 1])
+            )
+            st.plotly_chart(fig_retention, use_container_width=True)
+            
+            st.caption(f"📊 UIR promedio: {avg_uir_eff:.1f} días - Probabilidad cae a 37% después de {avg_uir_eff:.1f} días")
+        
+        with tab4:
+            st.subheader("Evolución Temporal")
+            
+            # Timeline de UIR y UIC
+            timeline_data = []
+            for card in state.cards:
+                for i, review in enumerate(card.history):
+                    timestamp = review.timestamp if hasattr(review, 'timestamp') else review.get('timestamp', '')
+                    if timestamp:
+                        timeline_data.append({
+                            'timestamp': datetime.fromisoformat(timestamp),
+                            'UIR_base': card.UIR_base,  # Valor actual (simplificado)
+                            'UIC_local': card.UIC_local
+                        })
+            
+            if timeline_data:
+                df_timeline = pd.DataFrame(timeline_data)
+                df_timeline = df_timeline.sort_values('timestamp')
+                
+                # Agrupar por día y promediar
+                df_timeline['date'] = df_timeline['timestamp'].dt.date
+                daily_avg = df_timeline.groupby('date').agg({
+                    'UIR_base': 'mean',
+                    'UIC_local': 'mean'
+                }).reset_index()
+                
+                fig_timeline = go.Figure()
+                fig_timeline.add_trace(go.Scatter(x=daily_avg['date'], y=daily_avg['UIR_base'],
+                                                 mode='lines+markers', name='UIR Base Promedio',
+                                                 line=dict(color='blue')))
+                fig_timeline.add_trace(go.Scatter(x=daily_avg['date'], y=daily_avg['UIC_local']*10,
+                                                 mode='lines+markers', name='UIC Local Promedio (×10)',
+                                                 line=dict(color='green')))
+                
+                fig_timeline.update_layout(
+                    title="Evolución de UIR y UIC en el Tiempo",
+                    xaxis_title="Fecha",
+                    yaxis_title="Valor",
+                    hovermode='x unified'
+                )
+                st.plotly_chart(fig_timeline, use_container_width=True)
+            else:
+                st.info("No hay suficiente historial para mostrar evolución temporal.")
     else:
         st.info("👋 ¡Bienvenido! Comienza importando tarjetas en la página 'Crear/Importar Tarjetas'.")
 
