@@ -719,14 +719,41 @@ st.sidebar.markdown(f"👤 **{username}**")
 
 col_a, col_b = st.sidebar.columns(2)
 with col_a:
-    # Toggle de modo oscuro
-    if st.button("🌙" if not st.session_state.dark_mode else "☀️", key="dark_mode_toggle"):
+    # Toggle de modo oscuro/claro
+    mode_label = "☀️ Claro" if st.session_state.dark_mode else "🌙 Oscuro"
+    if st.button(mode_label, key="dark_mode_toggle"):
         st.session_state.dark_mode = not st.session_state.dark_mode
         st.rerun()
 
 with col_b:
     if st.button("🚪 Salir", key="logout_btn"):
         auth.logout()
+
+# Aplicar tema según el modo
+if st.session_state.dark_mode:
+    st.markdown("""
+    <style>
+        .stApp {
+            background-color: #0E1117;
+            color: #FAFAFA;
+        }
+        .stSidebar {
+            background-color: #262730;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <style>
+        .stApp {
+            background-color: #FFFFFF;
+            color: #262730;
+        }
+        .stSidebar {
+            background-color: #F0F2F6;
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
 
@@ -1360,6 +1387,13 @@ def process_review(card: Card, grade: int, session: dict):
     
     # Guardar
     save_state(state)
+    
+    # Si es "Again" (grade=0), volver a agregar la tarjeta al final de la cola
+    if grade == 0:
+        # Obtener el índice de la tarjeta actual
+        current_card_idx = session['cards_to_review'][session['current_card_idx']]
+        # Agregar al final de la cola
+        session['cards_to_review'].append(current_card_idx)
     
     # Avanzar (Streamlit hará rerun automáticamente después del callback)
     session['current_card_idx'] += 1
