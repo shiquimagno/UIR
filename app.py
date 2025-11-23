@@ -95,27 +95,38 @@ def auto_backup():
     Se ejecuta al inicio de la app
     Mantiene últimos 7 días de backups
     """
-    if not os.path.exists(STATE_FILE):
-        return
-    
-    auto_backup_dir = os.path.join(DATA_DIR, "auto_backups")
-    date_str = datetime.now().strftime("%Y%m%d")
-    backup_file = os.path.join(auto_backup_dir, f"state_{date_str}.json")
-    
-    # Solo crear backup si no existe uno de hoy
-    if not os.path.exists(backup_file):
-        import shutil
-        shutil.copy(STATE_FILE, backup_file)
+    try:
+        if not os.path.exists(STATE_FILE):
+            return
         
-        # Limpiar backups antiguos (mantener últimos 7 días)
-        all_backups = sorted([
-            f for f in os.listdir(auto_backup_dir) 
-            if f.startswith("state_") and f.endswith(".json")
-        ])
+        # Asegurar que el directorio existe
+        ensure_data_dir()
         
-        if len(all_backups) > 7:
-            for old_backup in all_backups[:-7]:
-                os.remove(os.path.join(auto_backup_dir, old_backup))
+        auto_backup_dir = os.path.join(DATA_DIR, "auto_backups")
+        date_str = datetime.now().strftime("%Y%m%d")
+        backup_file = os.path.join(auto_backup_dir, f"state_{date_str}.json")
+        
+        # Solo crear backup si no existe uno de hoy
+        if not os.path.exists(backup_file):
+            import shutil
+            shutil.copy(STATE_FILE, backup_file)
+            
+            # Limpiar backups antiguos (mantener últimos 7 días)
+            all_backups = sorted([
+                f for f in os.listdir(auto_backup_dir) 
+                if f.startswith("state_") and f.endswith(".json")
+            ])
+            
+            if len(all_backups) > 7:
+                for old_backup in all_backups[:-7]:
+                    try:
+                        os.remove(os.path.join(auto_backup_dir, old_backup))
+                    except:
+                        pass  # Ignorar errores al eliminar backups antiguos
+    except Exception as e:
+        # No fallar la app si el backup falla
+        # Solo registrar el error silenciosamente
+        pass
 
 
 def save_state(state: AppState):
