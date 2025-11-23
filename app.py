@@ -61,6 +61,11 @@ class Card:
     
     # Historial
     history: List[ReviewHistory] = field(default_factory=list)
+    
+    # Estado y notas (Phase 3)
+    status: str = "active"  # active, suspended, archived
+    notes: str = ""  # Notas personales
+    mnemonics: str = ""  # Técnicas mnemotécnicas
 
 @dataclass
 class AppState:
@@ -593,6 +598,53 @@ def compute_next_review_date(card: Card, interval_days: int) -> str:
     next_date = datetime.now() + timedelta(days=interval_days)
     return next_date.isoformat()
 
+def compute_streak(cards: List[Card]) -> int:
+    """
+    Calcula la racha actual de días consecutivos con repasos
+    
+    Returns:
+        Número de días consecutivos con al menos un repaso
+    """
+    if not cards:
+        return 0
+    
+    # Obtener todas las fechas únicas de repasos
+    review_dates = set()
+    for card in cards:
+        for review in card.history:
+            timestamp = review.timestamp if hasattr(review, 'timestamp') else review.get('timestamp', '')
+            if timestamp:
+                try:
+                    date = datetime.fromisoformat(timestamp).date()
+                    review_dates.add(date)
+                except:
+                    pass
+    
+    if not review_dates:
+        return 0
+    
+    # Ordenar fechas de más reciente a más antigua
+    sorted_dates = sorted(review_dates, reverse=True)
+    
+    # Calcular racha
+    today = datetime.now().date()
+    streak = 0
+    
+    # Verificar si hay repaso hoy o ayer (para no romper racha)
+    if sorted_dates[0] not in [today, today - timedelta(days=1)]:
+        return 0
+    
+    # Contar días consecutivos
+    expected_date = sorted_dates[0]
+    for date in sorted_dates:
+        if date == expected_date:
+            streak += 1
+            expected_date = date - timedelta(days=1)
+        else:
+            break
+    
+    return streak
+
 # ============================================================================
 # STREAMLIT APP INITIALIZATION
 # ============================================================================
@@ -644,6 +696,16 @@ st.session_state.current_page = st.sidebar.radio("Navegación", pages,
 st.sidebar.markdown("---")
 st.sidebar.markdown(f"**Tarjetas totales:** {len(state.cards)}")
 st.sidebar.markdown(f"**UIC global:** {compute_UIC_global(state.similarity_matrix) if state.similarity_matrix is not None else 0:.3f}")
+
+# Mostrar racha
+if state.cards:
+    streak = compute_streak(state.cards)
+    if streak > 0:
+        st.sidebar.markdown(f"🔥 **Racha:** {streak} días")
+        if streak >= 7:
+            st.sidebar.success("¡Semana completa!")
+        if streak >= 30:
+            st.sidebar.success("🏆 ¡Mes completo!")
 
 # ============================================================================
 # PAGE FUNCTIONS
