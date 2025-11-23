@@ -747,10 +747,19 @@ else:
     <style>
         .stApp {
             background-color: #FFFFFF;
-            color: #262730;
+            color: #1E1E1E;
         }
         .stSidebar {
-            background-color: #F0F2F6;
+            background-color: #F8F9FA;
+        }
+        .stMarkdown, .stText {
+            color: #1E1E1E !important;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            color: #1E1E1E !important;
+        }
+        .stButton button {
+            color: #1E1E1E;
         }
     </style>
     """, unsafe_allow_html=True)
