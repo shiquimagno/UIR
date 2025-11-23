@@ -570,10 +570,122 @@ def page_import():
             except Exception as e:
                 st.error(f"Error leyendo CSV: {e}")
     
+    
     with tab3:
-        st.subheader("Importar desde RemNote")
-        st.markdown("Pega el export de RemNote (formato CSV compatible)")
-        st.info("RemNote puede exportar a CSV. Usa el tab CSV para importar.")
+        st.subheader("Importar desde RemNote (Markdown)")
+        st.markdown("RemNote exporta en formato Markdown. Formato: `- Pregunta >>> Respuesta`")
+        st.code("""Ejemplo:
+- ¿Cuáles son los propósitos de la ciencia? >>>
+    - Quitar lo superficial y entrar a la esencia
+- ¿Qué es Python? >>> Un lenguaje de programación
+        """, language="markdown")
+        
+        markdown_input = st.text_area("Pega tu export de RemNote (Markdown):", height=300,
+                                      placeholder="- ¿Pregunta 1? >>>\n    - Respuesta 1\n- ¿Pregunta 2? >>> Respuesta 2")
+        
+        tags_md = st.text_input("Etiquetas (separadas por comas):", placeholder="remnote, estudio", key="md_tags")
+        
+        if st.button("Importar desde Markdown"):
+            if markdown_input.strip():
+                created_count = 0
+                errors = []
+                tags = [t.strip() for t in tags_md.split(',') if t.strip()]
+                
+                # Parser para formato RemNote Markdown
+                lines = markdown_input.strip().split('\n')
+                current_question = None
+                current_answer_lines = []
+                
+                for i, line in enumerate(lines):
+                    line_stripped = line.strip()
+                    
+                    # Detectar pregunta (línea que contiene >>>)
+                    if '>>>' in line:
+                        # Guardar tarjeta anterior si existe
+                        if current_question and current_answer_lines:
+                            answer = ' '.join(current_answer_lines).strip()
+                            if answer:
+                                card = Card(
+                                    id=f"card_{len(state.cards)}_{int(time.time())}_{created_count}",
+                                    question=current_question,
+                                    answer=answer,
+                                    tags=tags
+                                )
+                                state.cards.append(card)
+                                created_count += 1
+                            current_answer_lines = []
+                        
+                        # Procesar nueva pregunta
+                        parts = line.split('>>>', 1)
+                        question_part = parts[0].strip()
+                        
+                        # Limpiar bullets y guiones
+                        question_part = question_part.lstrip('-').lstrip('*').strip()
+                        current_question = question_part
+                        
+                        # Si hay respuesta en la misma línea
+                        if len(parts) > 1 and parts[1].strip():
+                            answer_part = parts[1].strip()
+                            answer_part = answer_part.lstrip('-').lstrip('*').strip()
+                            current_answer_lines.append(answer_part)
+                    
+                    # Líneas de respuesta (indentadas o con bullets)
+                    elif current_question and line_stripped:
+                        # Limpiar indentación y bullets
+                        answer_line = line_stripped.lstrip('-').lstrip('*').strip()
+                        if answer_line:
+                            current_answer_lines.append(answer_line)
+                    
+                    # Línea vacía o nueva sección sin >>>
+                    elif not line_stripped and current_question:
+                        # Guardar tarjeta actual
+                        if current_answer_lines:
+                            answer = ' '.join(current_answer_lines).strip()
+                            if answer:
+                                card = Card(
+                                    id=f"card_{len(state.cards)}_{int(time.time())}_{created_count}",
+                                    question=current_question,
+                                    answer=answer,
+                                    tags=tags
+                                )
+                                state.cards.append(card)
+                                created_count += 1
+                        current_question = None
+                        current_answer_lines = []
+                
+                # Guardar última tarjeta si existe
+                if current_question and current_answer_lines:
+                    answer = ' '.join(current_answer_lines).strip()
+                    if answer:
+                        card = Card(
+                            id=f"card_{len(state.cards)}_{int(time.time())}_{created_count}",
+                            question=current_question,
+                            answer=answer,
+                            tags=tags
+                        )
+                        state.cards.append(card)
+                        created_count += 1
+                
+                if created_count > 0:
+                    save_state(state)
+                    st.success(f"✅ {created_count} tarjetas importadas desde RemNote!")
+                    
+                    # Mostrar preview
+                    with st.expander("Ver tarjetas importadas"):
+                        for card in state.cards[-created_count:]:
+                            st.markdown(f"**Q:** {card.question}")
+                            st.markdown(f"**A:** {card.answer}")
+                            st.markdown("---")
+                    
+                    st.rerun()
+                else:
+                    st.warning("⚠️ No se encontraron tarjetas válidas. Asegúrate de usar el formato: `- Pregunta >>> Respuesta`")
+                    
+                if errors:
+                    with st.expander("⚠️ Errores encontrados"):
+                        for error in errors:
+                            st.write(error)
+
 
 def page_review_session():
     """Sesión interactiva de repaso"""
