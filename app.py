@@ -1072,26 +1072,85 @@ def page_review_session():
             st.warning("No hay tarjetas disponibles. Crea algunas primero.")
             return
         
-        # Filtrar tarjetas pendientes
-        today = datetime.now()
-        pending_cards = [i for i, c in enumerate(state.cards)
-                        if not c.next_review or datetime.fromisoformat(c.next_review) <= today]
+        # Selector de modo de repaso
+        st.markdown("### Modo de Repaso")
+        review_mode = st.selectbox(
+            "Elige cómo quieres repasar:",
+            [
+                "Pendientes (por fecha)",
+                "Aleatorio",
+                "Por tag específico",
+                "Tarjetas difíciles (éxito < 50%)",
+                "Solo tarjetas nuevas",
+                "Repaso espaciado óptimo (por UIR)"
+            ]
+        )
         
-        st.write(f"**Tarjetas pendientes:** {len(pending_cards)}")
+        # Filtrar tarjetas según el modo
+        today = datetime.now()
+        cards_to_review_indices = []
+        
+        if review_mode == "Pendientes (por fecha)":
+            cards_to_review_indices = [i for i, c in enumerate(state.cards)
+                                      if not c.next_review or datetime.fromisoformat(c.next_review) <= today]
+        
+        elif review_mode == "Aleatorio":
+            cards_to_review_indices = list(range(len(state.cards)))
+            import random
+            random.shuffle(cards_to_review_indices)
+        
+        elif review_mode == "Por tag específico":
+            # Obtener todos los tags únicos
+            all_tags = set()
+            for card in state.cards:
+                all_tags.update(card.tags)
+            
+            if all_tags:
+                selected_tag = st.selectbox("Selecciona tag:", sorted(all_tags))
+                cards_to_review_indices = [i for i, c in enumerate(state.cards)
+                                          if selected_tag in c.tags]
+            else:
+                st.warning("No hay tags disponibles.")
+                return
+        
+        elif review_mode == "Tarjetas difíciles (éxito < 50%)":
+            for i, card in enumerate(state.cards):
+                if card.history:
+                    # Calcular tasa de éxito
+                    recent = card.history[-5:]
+                    successes = sum(1 for r in recent 
+                                  if (r.grade if hasattr(r, 'grade') else r.get('grade', 0)) >= 2)
+                    success_rate = successes / len(recent)
+                    if success_rate < 0.5:
+                        cards_to_review_indices.append(i)
+        
+        elif review_mode == "Solo tarjetas nuevas":
+            cards_to_review_indices = [i for i, c in enumerate(state.cards)
+                                      if c.review_count == 0]
+        
+        elif review_mode == "Repaso espaciado óptimo (por UIR)":
+            # Ordenar por UIR efectivo (menor primero = más urgente)
+            card_uir_pairs = [(i, c.UIR_effective) for i, c in enumerate(state.cards)]
+            card_uir_pairs.sort(key=lambda x: x[1])
+            cards_to_review_indices = [i for i, _ in card_uir_pairs]
+        
+        # Mostrar información
+        st.write(f"**Tarjetas en este modo:** {len(cards_to_review_indices)}")
         st.write(f"**Total tarjetas:** {len(state.cards)}")
         
+        # Botones de inicio
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Repasar Pendientes", type="primary", disabled=len(pending_cards)==0):
+            if st.button("🚀 Iniciar Sesión", type="primary", disabled=len(cards_to_review_indices)==0):
                 session['active'] = True
-                session['cards_to_review'] = pending_cards
+                session['cards_to_review'] = cards_to_review_indices
                 session['current_card_idx'] = 0
                 session['show_answer'] = False
                 session['start_time'] = time.time()
                 st.rerun()
         
         with col2:
-            if st.button("Repasar Todas"):
+            if st.button("📋 Repasar Todas"):
                 session['active'] = True
                 session['cards_to_review'] = list(range(len(state.cards)))
                 session['current_card_idx'] = 0
