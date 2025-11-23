@@ -630,6 +630,7 @@ pages = [
     "Dashboard",
     "Crear/Importar Tarjetas",
     "Sesión de Repaso",
+    "📊 Analytics",
     "Grafo Semántico",
     "Comparador de Algoritmos",
     "Simulación",
@@ -1251,6 +1252,241 @@ def process_review(card: Card, grade: int, session: dict):
     session['show_answer'] = False
     session['start_time'] = time.time()
 
+def page_analytics():
+    """Página de Analytics avanzado con comparación temporal"""
+    st.title("📊 Analytics Avanzado")
+    
+    if not state.cards:
+        st.warning("No hay tarjetas para analizar.")
+        return
+    
+    # Selector de período para comparación temporal
+    st.sidebar.markdown("### 🕐 Comparación Temporal")
+    period = st.sidebar.selectbox("Período", ["Última semana", "Último mes", "Últimos 3 meses"])
+    
+    # Calcular fechas
+    today = datetime.now()
+    if period == "Última semana":
+        days_back = 7
+    elif period == "Último mes":
+        days_back = 30
+    else:
+        days_back = 90
+    
+    cutoff_date = today - timedelta(days=days_back)
+    
+    # Tabs para organizar analytics
+    tab1, tab2, tab3, tab4 = st.tabs(["📈 Métricas", "🎯 Retención por Tag", "⚠️ Problemáticas", "📅 Predicción"])
+    
+    with tab1:
+        st.subheader("Métricas Generales")
+        
+        # Métricas actuales
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            avg_uir_current = np.mean([c.UIR_effective for c in state.cards])
+            st.metric("UIR Promedio", f"{avg_uir_current:.1f}d")
+        
+        with col2:
+            avg_uic_current = np.mean([c.UIC_local for c in state.cards])
+            st.metric("UIC Promedio", f"{avg_uic_current:.3f}")
+        
+        with col3:
+            # Tasa de éxito global
+            all_grades = []
+            for c in state.cards:
+                for r in c.history:
+                    grade = r.grade if hasattr(r, 'grade') else r.get('grade', 0)
+                    all_grades.append(grade)
+            
+            if all_grades:
+                success_rate = sum(1 for g in all_grades if g >= 2) / len(all_grades)
+                st.metric("Tasa de Éxito", f"{success_rate*100:.1f}%")
+            else:
+                st.metric("Tasa de Éxito", "N/A")
+        
+        with col4:
+            # Repasos totales
+            total_reviews = sum(len(c.history) for c in state.cards)
+            st.metric("Repasos Totales", total_reviews)
+        
+        # Comparación temporal (deltas)
+        st.markdown("---")
+        st.subheader(f"Cambios en {period}")
+        
+        # Calcular métricas del período anterior
+        old_reviews = []
+        recent_reviews = []
+        
+        for card in state.cards:
+            for review in card.history:
+                timestamp = review.timestamp if hasattr(review, 'timestamp') else review.get('timestamp', '')
+                if timestamp:
+                    review_date = datetime.fromisoformat(timestamp)
+                    if review_date >= cutoff_date:
+                        recent_reviews.append(review)
+                    else:
+                        old_reviews.append(review)
+        
+        col_a, col_b, col_c = st.columns(3)
+        
+        with col_a:
+            # Delta en repasos
+            delta_reviews = len(recent_reviews)
+            st.metric("Repasos en Período", delta_reviews)
+        
+        with col_b:
+            # Delta en tasa de éxito
+            if recent_reviews:
+                recent_success = sum(1 for r in recent_reviews 
+                                   if (r.grade if hasattr(r, 'grade') else r.get('grade', 0)) >= 2) / len(recent_reviews)
+                st.metric("Éxito Reciente", f"{recent_success*100:.1f}%")
+            else:
+                st.metric("Éxito Reciente", "N/A")
+        
+        with col_c:
+            # Promedio de repasos por día
+            if recent_reviews:
+                avg_per_day = len(recent_reviews) / days_back
+                st.metric("Repasos/Día", f"{avg_per_day:.1f}")
+            else:
+                st.metric("Repasos/Día", "0")
+        
+        # Gráfica de tendencia
+        if recent_reviews:
+            df_recent = pd.DataFrame([{
+                'date': datetime.fromisoformat(r.timestamp if hasattr(r, 'timestamp') else r.get('timestamp', '')).date(),
+                'grade': r.grade if hasattr(r, 'grade') else r.get('grade', 0)
+            } for r in recent_reviews if hasattr(r, 'timestamp') or 'timestamp' in r])
+            
+            daily_stats = df_recent.groupby('date').agg({
+                'grade': ['count', 'mean']
+            }).reset_index()
+            daily_stats.columns = ['date', 'count', 'avg_grade']
+            
+            fig_trend = go.Figure()
+            fig_trend.add_trace(go.Scatter(x=daily_stats['date'], y=daily_stats['count'],
+                                          mode='lines+markers', name='Repasos por Día'))
+            fig_trend.update_layout(title=f"Tendencia de Actividad ({period})",
+                                   xaxis_title="Fecha", yaxis_title="Repasos")
+            st.plotly_chart(fig_trend, use_container_width=True)
+    
+    with tab2:
+        st.subheader("Retención por Tag")
+        
+        # Agrupar por tags
+        tag_stats = {}
+        for card in state.cards:
+            for tag in card.tags:
+                if tag not in tag_stats:
+                    tag_stats[tag] = {'cards': 0, 'reviews': 0, 'successes': 0}
+                
+                tag_stats[tag]['cards'] += 1
+                tag_stats[tag]['reviews'] += len(card.history)
+                
+                for r in card.history:
+                    grade = r.grade if hasattr(r, 'grade') else r.get('grade', 0)
+                    if grade >= 2:
+                        tag_stats[tag]['successes'] += 1
+        
+        if tag_stats:
+            # Calcular tasa de éxito por tag
+            tag_data = []
+            for tag, stats in tag_stats.items():
+                success_rate = (stats['successes'] / stats['reviews'] * 100) if stats['reviews'] > 0 else 0
+                tag_data.append({
+                    'Tag': tag,
+                    'Tarjetas': stats['cards'],
+                    'Repasos': stats['reviews'],
+                    'Tasa de Éxito (%)': success_rate
+                })
+            
+            df_tags = pd.DataFrame(tag_data).sort_values('Tasa de Éxito (%)', ascending=False)
+            st.dataframe(df_tags, use_container_width=True)
+            
+            # Gráfica de barras
+            fig_tags = px.bar(df_tags, x='Tag', y='Tasa de Éxito (%)',
+                             title="Tasa de Éxito por Tag",
+                             color='Tasa de Éxito (%)',
+                             color_continuous_scale='RdYlGn')
+            st.plotly_chart(fig_tags, use_container_width=True)
+        else:
+            st.info("No hay tags para analizar.")
+    
+    with tab3:
+        st.subheader("Tarjetas Problemáticas")
+        
+        # Identificar tarjetas con baja tasa de éxito
+        problematic = []
+        for card in state.cards:
+            if len(card.history) >= 3:  # Al menos 3 repasos
+                recent = card.history[-5:]
+                successes = sum(1 for r in recent 
+                              if (r.grade if hasattr(r, 'grade') else r.get('grade', 0)) >= 2)
+                success_rate = successes / len(recent)
+                
+                if success_rate < 0.5:  # Menos de 50% de éxito
+                    problematic.append({
+                        'Pregunta': card.question[:60],
+                        'Repasos': len(card.history),
+                        'Éxito (%)': success_rate * 100,
+                        'UIR': card.UIR_effective,
+                        'UIC': card.UIC_local
+                    })
+        
+        if problematic:
+            df_prob = pd.DataFrame(problematic).sort_values('Éxito (%)')
+            st.dataframe(df_prob, use_container_width=True)
+            
+            st.markdown("### 💡 Recomendaciones")
+            st.info(f"**{len(problematic)} tarjetas** necesitan atención. Considera:\n"
+                   "- Revisar si la pregunta/respuesta es clara\n"
+                   "- Dividir en tarjetas más simples\n"
+                   "- Agregar contexto o ejemplos\n"
+                   "- Conectar con otras tarjetas (mejorar UIC)")
+        else:
+            st.success("✅ No hay tarjetas problemáticas. ¡Buen trabajo!")
+    
+    with tab4:
+        st.subheader("Predicción de Carga de Trabajo")
+        
+        # Predecir repasos en próximos días
+        prediction_days = st.slider("Días a predecir", 7, 90, 30)
+        
+        workload = {i: 0 for i in range(prediction_days)}
+        
+        for card in state.cards:
+            if card.next_review:
+                try:
+                    next_dt = datetime.fromisoformat(card.next_review)
+                    days_until = (next_dt - today).days
+                    
+                    if 0 <= days_until < prediction_days:
+                        workload[days_until] += 1
+                except:
+                    pass
+        
+        df_workload = pd.DataFrame({
+            'Día': list(workload.keys()),
+            'Repasos Esperados': list(workload.values())
+        })
+        
+        fig_workload = px.bar(df_workload, x='Día', y='Repasos Esperados',
+                             title=f"Carga de Trabajo Proyectada ({prediction_days} días)",
+                             labels={'Día': 'Días desde hoy'})
+        st.plotly_chart(fig_workload, use_container_width=True)
+        
+        # Estadísticas de la predicción
+        col_x, col_y, col_z = st.columns(3)
+        with col_x:
+            st.metric("Total Proyectado", sum(workload.values()))
+        with col_y:
+            st.metric("Promedio/Día", f"{sum(workload.values())/prediction_days:.1f}")
+        with col_z:
+            max_day = max(workload, key=workload.get)
+            st.metric("Día Pico", f"Día {max_day} ({workload[max_day]} repasos)")
+
 def page_semantic_graph():
     """Visualización del grafo semántico"""
     st.title("🕸️ Grafo Semántico")
@@ -1568,6 +1804,8 @@ elif current_page == "Crear/Importar Tarjetas":
     page_import()
 elif current_page == "Sesión de Repaso":
     page_review_session()
+elif current_page == "📊 Analytics":
+    page_analytics()
 elif current_page == "Grafo Semántico":
     page_semantic_graph()
 elif current_page == "Comparador de Algoritmos":
