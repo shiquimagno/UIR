@@ -248,20 +248,25 @@ def get_spanish_stop_words() -> List[str]:
         'cosa', 'cosas', 'algo', 'nada', 'alguien', 'nadie', 'vez', 'veces'
     ]
 
-def compute_tfidf(cards: List[Card]) -> Tuple[Optional[np.ndarray], Optional[TfidfVectorizer]]:
+
+@st.cache_data
+def compute_tfidf(cards_data: Tuple[Tuple[str, str, str], ...]) -> Tuple[Optional[np.ndarray], Optional[object]]:
     """
     Construye matriz TF-IDF de preguntas + respuestas
     Filtra stop words en español (palabras interrogativas, conectores, etc.)
     para enfocarse en palabras núcleo con valor semántico
     
+    Args:
+        cards_data: Tupla de tuplas (id, question, answer) para hashing
+    
     Returns:
         (matriz TF-IDF, vectorizer) o (None, None) si no hay suficientes tarjetas
     """
-    if len(cards) < 2:
+    if len(cards_data) < 2:
         return None, None
     
-    # Combinar pregunta y respuesta
-    documents = [f"{card.question} {card.answer}" for card in cards]
+    # Reconstruir documentos desde cards_data
+    documents = [f"{q} {a}" for _, q, a in cards_data]
     
     try:
         # Obtener stop words personalizadas
@@ -280,6 +285,15 @@ def compute_tfidf(cards: List[Card]) -> Tuple[Optional[np.ndarray], Optional[Tfi
     except Exception as e:
         st.warning(f"Error calculando TF-IDF: {e}")
         return None, None
+
+def compute_tfidf_from_cards(cards: List[Card]) -> Tuple[Optional[np.ndarray], Optional[object]]:
+    """
+    Wrapper para compute_tfidf que convierte List[Card] a formato cacheable
+    """
+    # Convertir cards a tupla de tuplas para que sea hashable
+    cards_data = tuple((c.id, c.question, c.answer) for c in cards)
+    return compute_tfidf(cards_data)
+
 
 
 def compute_similarity_matrix(tfidf_matrix: np.ndarray) -> np.ndarray:
@@ -1032,18 +1046,6 @@ def page_semantic_graph():
     """Visualización del grafo semántico"""
     st.title("🕸️ Grafo Semántico")
     
-    if len(state.cards) < 2:
-        st.warning("Necesitas al menos 2 tarjetas para construir el grafo.")
-        return
-    
-    if st.button("🔄 Reconstruir Grafo"):
-        with st.spinner("Calculando TF-IDF y similitudes..."):
-            tfidf_matrix, vectorizer = compute_tfidf(state.cards)
-            if tfidf_matrix is not None:
-                state.tfidf_matrix = tfidf_matrix
-                state.similarity_matrix = compute_similarity_matrix(tfidf_matrix)
-                
-                # Actualizar UIC local de todas las tarjetas
                 for i, card in enumerate(state.cards):
                     card.UIC_local = compute_UIC_local(state.similarity_matrix, i)
                 
