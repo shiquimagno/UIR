@@ -1,0 +1,11 @@
+question,answer,tags
+¿Qué es una lista en Python?,Una estructura de datos mutable que almacena elementos ordenados en secuencia,python-basics
+¿Qué es NumPy?,Librería de Python para computación numérica con arrays multidimensionales de alto rendimiento,data-science
+¿Qué es un DataFrame en Pandas?,Estructura de datos bidimensional etiquetada similar a una tabla de base de datos,data-science
+¿Qué es una función lambda en Python?,Función anónima de una sola expresión definida con la palabra clave lambda,python-basics
+¿Qué es el algoritmo de spaced repetition?,Técnica de aprendizaje que programa repasos en intervalos crecientes para optimizar la retención,learning-theory
+¿Qué es TF-IDF?,Medida estadística que evalúa la importancia de una palabra en un documento dentro de un corpus,nlp
+¿Qué es la similitud coseno?,Métrica que mide el coseno del ángulo entre dos vectores en un espacio multidimensional,machine-learning
+¿Qué es un grafo en teoría de grafos?,Estructura matemática formada por nodos (vértices) conectados por aristas (edges),graph-theory
+¿Qué es la curva de olvido de Ebbinghaus?,Modelo que describe cómo la retención de información disminuye exponencialmente con el tiempo,learning-theory
+¿Qué es scikit-learn?,Librería de Python para machine learning que incluye algoritmos de clasificación y regresión,machine-learning
