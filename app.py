@@ -377,7 +377,13 @@ def compute_success_rate(card: Card) -> float:
         return 0.5  # Neutral para tarjetas nuevas
     
     recent = card.history[-5:]  # Últimos 5 repasos
-    successes = sum(1 for r in recent if r.grade >= 2)  # Good o Easy
+    successes = 0
+    for r in recent:
+        # Manejar tanto dict como ReviewHistory object
+        grade = r.grade if hasattr(r, 'grade') else r.get('grade', 0)
+        if grade >= 2:  # Good o Easy
+            successes += 1
+    
     return successes / len(recent)
 
 def compute_anki_interval_pure(n: int, EF: float, I_prev: int, grade: int) -> Tuple[int, float, int]:
@@ -991,11 +997,10 @@ def process_review(card: Card, grade: int, session: dict):
     # Guardar
     save_state(state)
     
-    # Avanzar
+    # Avanzar (Streamlit hará rerun automáticamente después del callback)
     session['current_card_idx'] += 1
     session['show_answer'] = False
     session['start_time'] = time.time()
-    st.rerun()
 
 def page_semantic_graph():
     """Visualización del grafo semántico"""
