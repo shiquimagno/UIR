@@ -1046,6 +1046,18 @@ def page_semantic_graph():
     """Visualización del grafo semántico"""
     st.title("🕸️ Grafo Semántico")
     
+    if len(state.cards) < 2:
+        st.warning("Necesitas al menos 2 tarjetas para construir el grafo.")
+        return
+    
+    if st.button("🔄 Reconstruir Grafo", type="primary"):
+        with st.spinner("Calculando TF-IDF y similitudes..."):
+            tfidf_matrix, vectorizer = compute_tfidf_from_cards(state.cards)
+            if tfidf_matrix is not None:
+                state.tfidf_matrix = tfidf_matrix
+                state.similarity_matrix = compute_similarity_matrix(tfidf_matrix)
+                
+                # Actualizar UIC local de todas las tarjetas
                 for i, card in enumerate(state.cards):
                     card.UIC_local = compute_UIC_local(state.similarity_matrix, i)
                 
