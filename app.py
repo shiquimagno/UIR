@@ -78,6 +78,20 @@ class User:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     last_updated: str = field(default_factory=lambda: datetime.now().isoformat())
 
+@dataclass
+class AppState:
+    """Estado global de la aplicación"""
+    cards: List[Card] = field(default_factory=list)
+    params: Dict[str, float] = field(default_factory=lambda: {
+        'alpha': 0.2,
+        'gamma': 0.15,
+        'delta': 0.02,
+        'eta': 0.05
+    })
+    tfidf_matrix: Optional[np.ndarray] = None
+    similarity_matrix: Optional[np.ndarray] = None
+    last_updated: str = field(default_factory=lambda: datetime.now().isoformat())
+
 # ============================================================================
 # PERSISTENCE
 # ============================================================================
