@@ -21,6 +21,9 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 import time
 
+# Importar módulo de autenticación
+import auth
+
 # ============================================================================
 # DATA STRUCTURES
 # ============================================================================
@@ -68,17 +71,11 @@ class Card:
     mnemonics: str = ""  # Técnicas mnemotécnicas
 
 @dataclass
-class AppState:
-    """Estado global de la aplicación"""
-    cards: List[Card] = field(default_factory=list)
-    params: Dict[str, float] = field(default_factory=lambda: {
-        'alpha': 0.2,   # modulación UIR por UIC
-        'gamma': 0.15,  # incremento UIC en acierto
-        'delta': 0.02,  # decremento UIC en fallo
-        'eta': 0.05,    # incremento UIR_base
-    })
-    tfidf_matrix: Optional[np.ndarray] = None
-    similarity_matrix: Optional[np.ndarray] = None
+class User:
+    """Usuario del sistema"""
+    username: str
+    password_hash: str  # Hash de la contraseña (no guardar en texto plano)
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     last_updated: str = field(default_factory=lambda: datetime.now().isoformat())
 
 # ============================================================================
@@ -652,6 +649,32 @@ def compute_streak(cards: List[Card]) -> int:
 # Ejecutar backup automático al inicio
 auto_backup()
 
+# ============================================================================
+# AUTHENTICATION CHECK
+# ============================================================================
+
+# Inicializar session state para autenticación
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+    st.session_state.username = None
+
+# Inicializar dark mode
+if 'dark_mode' not in st.session_state:
+    st.session_state.dark_mode = False
+
+# Si no está autenticado, mostrar página de login
+if not st.session_state.authenticated:
+    auth.show_auth_page()
+    st.stop()
+
+# ============================================================================
+# MAIN APP (Solo si está autenticado)
+# ============================================================================
+
+# Cargar estado específico del usuario
+username = st.session_state.username
+STATE_FILE = auth.get_user_state_file(username)
+
 # Inicializar session state
 if 'state' not in st.session_state:
     st.session_state.state = load_state()
@@ -676,6 +699,21 @@ state = st.session_state.state
 # ============================================================================
 
 st.sidebar.title("🧠 Simulador UIR/UIC")
+
+# Usuario y controles
+st.sidebar.markdown(f"👤 **{username}**")
+
+col_a, col_b = st.sidebar.columns(2)
+with col_a:
+    # Toggle de modo oscuro
+    if st.button("🌙" if not st.session_state.dark_mode else "☀️", key="dark_mode_toggle"):
+        st.session_state.dark_mode = not st.session_state.dark_mode
+        st.rerun()
+
+with col_b:
+    if st.button("🚪 Salir", key="logout_btn"):
+        auth.logout()
+
 st.sidebar.markdown("---")
 
 pages = [
