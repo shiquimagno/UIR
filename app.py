@@ -366,60 +366,166 @@ def update_on_review(card: Card, grade: int, response_time: float,
 # SCHEDULING ALGORITHMS
 # ============================================================================
 
+def compute_success_rate(card: Card) -> float:
+    """
+    Calcula tasa de éxito reciente (últimos 5 repasos)
+    
+    Returns:
+        Float entre 0 y 1 (0.5 si no hay historial)
+    """
+    if not card.history:
+        return 0.5  # Neutral para tarjetas nuevas
+    
+    recent = card.history[-5:]  # Últimos 5 repasos
+    successes = sum(1 for r in recent if r.grade >= 2)  # Good o Easy
+    return successes / len(recent)
+
+def compute_anki_interval_pure(n: int, EF: float, I_prev: int, grade: int) -> Tuple[int, float, int]:
+    """
+    Calcula intervalo Anki sin modificar la tarjeta (función pura)
+    
+    Returns:
+        (nuevo_intervalo, nuevo_EF, nuevo_n)
+    """
+    if grade == 0:  # Again
+        return 1, max(1.3, EF - 0.2), 0
+    elif grade == 1:  # Hard
+        return max(1, round(I_prev * 1.2)), max(1.3, EF - 0.15), n + 1
+    elif grade == 2:  # Good
+        if n == 0:
+            return 1, EF, n + 1
+        elif n == 1:
+            return 6, EF, n + 1
+        else:
+            return round(I_prev * EF), EF, n + 1
+    else:  # Easy (grade == 3)
+        if n == 0:
+            return 4, EF + 0.1, n + 1
+        else:
+            return round(I_prev * EF * 1.3), EF + 0.1, n + 1
+
 def anki_classic_schedule(card: Card, grade: int) -> int:
     """
     Algoritmo Anki clásico (SM-2 simplificado)
+    Modifica la tarjeta in-place
     
     Returns:
         Próximo intervalo en días
     """
-    EF = card.easiness_factor
-    I_prev = card.interval_days
-    n = card.repetition_count
+    I_new, EF_new, n_new = compute_anki_interval_pure(
+        card.repetition_count,
+        card.easiness_factor,
+        card.interval_days,
+        grade
+    )
     
-    if grade == 0:  # Again
-        card.repetition_count = 0
-        card.interval_days = 1
-        card.easiness_factor = max(1.3, EF - 0.2)
-    elif grade == 1:  # Hard
-        card.repetition_count = n + 1
-        card.interval_days = max(1, round(I_prev * 1.2))
-        card.easiness_factor = max(1.3, EF - 0.15)
-    elif grade == 2:  # Good
-        card.repetition_count = n + 1
-        if n == 0:
-            card.interval_days = 1
-        elif n == 1:
-            card.interval_days = 6
-        else:
-            card.interval_days = round(I_prev * EF)
-    else:  # Easy (grade == 3)
-        card.repetition_count = n + 1
-        if n == 0:
-            card.interval_days = 4
-        else:
-            card.interval_days = round(I_prev * EF * 1.3)
-        card.easiness_factor = EF + 0.1
+    # Actualizar tarjeta
+    card.interval_days = I_new
+    card.easiness_factor = EF_new
+    card.repetition_count = n_new
     
-    return card.interval_days
+    return I_new
+
+def compute_uir_modulation_factor(card: Card, grade: int, params: Dict[str, float]) -> float:
+    """
+    Calcula factor de modulación basado en UIR/UIC
+    
+    Factor combina:
+    - Progreso de retención (UIR_eff / UIR_inicial)
+    - Refuerzo semántico (UIC_local)
+    - Historial de éxito
+    - Dificultad percibida (grade)
+    
+    Returns:
+        Factor entre 0.5 y 2.5
+    """
+    UIR_INICIAL = 7.0  # UIR de referencia inicial
+    
+    # 1. Ratio UIR (progreso de retención)
+    UIR_ratio = card.UIR_effective / UIR_INICIAL
+    
+    # 2. Factor UIC (refuerzo semántico)
+    # Tarjetas conectadas → intervalos más largos
+    UIC_factor = 1 + params['alpha'] * card.UIC_local
+    
+    # 3. Factor de éxito (historial reciente)
+    success_rate = compute_success_rate(card)
+    success_factor = 0.7 + 0.6 * success_rate  # Rango [0.7, 1.3]
+    
+    # 4. Factor de dificultad percibida
+    grade_factors = {
+        0: 0.5,   # Again: acortar mucho
+        1: 0.8,   # Hard: acortar un poco
+        2: 1.0,   # Good: neutral
+        3: 1.3    # Easy: alargar
+    }
+    grade_factor = grade_factors.get(grade, 1.0)
+    
+    # Combinar todos los factores
+    total_factor = UIR_ratio * UIC_factor * success_factor * grade_factor
+    
+    # Limitar rango para evitar extremos
+    return np.clip(total_factor, 0.5, 2.5)
 
 def anki_uir_adapted_schedule(card: Card, grade: int, params: Dict[str, float]) -> int:
     """
-    Anki adaptado por UIR: I_new = I_classic * (UIR_eff / UIR_base)
+    Algoritmo híbrido Anki+UIR mejorado
+    
+    Combina:
+    - Intervalo base de Anki (experiencia acumulada)
+    - Factor de modulación UIR/UIC (retención individual + contexto semántico)
     
     Returns:
         Próximo intervalo en días
     """
-    # Primero calcular intervalo Anki clásico
-    I_classic = anki_classic_schedule(card, grade)
+    # 1. Calcular intervalo Anki (sin modificar card)
+    I_anki, _, _ = compute_anki_interval_pure(
+        card.repetition_count,
+        card.easiness_factor,
+        card.interval_days,
+        grade
+    )
     
-    # Escalar por factor UIR
-    if card.UIR_base > 0:
-        F = card.UIR_effective / card.UIR_base
-        I_adapted = round(I_classic * F)
-        return max(1, I_adapted)
+    # 2. Calcular factor de modulación UIR
+    UIR_factor = compute_uir_modulation_factor(card, grade, params)
     
-    return I_classic
+    # 3. Aplicar modulación
+    I_final = round(I_anki * UIR_factor)
+    
+    return max(1, I_final)
+
+def predict_intervals_for_all_grades(card: Card, params: Dict[str, float]) -> Dict[str, Dict[int, int]]:
+    """
+    Predice intervalos para todas las opciones de calificación
+    Útil para mostrar en UI antes de que el usuario elija
+    
+    Returns:
+        {
+            'anki_classic': {0: días, 1: días, 2: días, 3: días},
+            'anki_uir': {0: días, 1: días, 2: días, 3: días}
+        }
+    """
+    predictions = {
+        'anki_classic': {},
+        'anki_uir': {}
+    }
+    
+    for grade in [0, 1, 2, 3]:
+        # Anki clásico (función pura, no modifica card)
+        I_anki, _, _ = compute_anki_interval_pure(
+            card.repetition_count,
+            card.easiness_factor,
+            card.interval_days,
+            grade
+        )
+        predictions['anki_classic'][grade] = I_anki
+        
+        # Anki+UIR
+        UIR_factor = compute_uir_modulation_factor(card, grade, params)
+        I_uir = round(I_anki * UIR_factor)
+        predictions['anki_uir'][grade] = max(1, I_uir)
+    
+    return predictions
 
 def compute_next_review_date(card: Card, interval_days: int) -> str:
     """Calcula fecha de próximo repaso"""
@@ -834,20 +940,31 @@ def page_review_session():
             st.markdown("---")
             st.subheader("¿Cómo fue tu respuesta?")
             
+            # Predecir intervalos para todas las opciones
+            predictions = predict_intervals_for_all_grades(card, state.params)
+            
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                if st.button("❌ Again", use_container_width=True):
-                    process_review(card, 0, session)
+                st.button("❌ Again", use_container_width=True, key="btn_again",
+                         on_click=process_review, args=(card, 0, session))
+                st.caption(f"🔵 Anki+UIR: **{predictions['anki_uir'][0]}d**")
+                st.caption(f"⚪ Anki: {predictions['anki_classic'][0]}d")
             with col2:
-                if st.button("😓 Hard", use_container_width=True):
-                    process_review(card, 1, session)
+                st.button("😓 Hard", use_container_width=True, key="btn_hard",
+                         on_click=process_review, args=(card, 1, session))
+                st.caption(f"🔵 Anki+UIR: **{predictions['anki_uir'][1]}d**")
+                st.caption(f"⚪ Anki: {predictions['anki_classic'][1]}d")
             with col3:
-                if st.button("✅ Good", use_container_width=True):
-                    process_review(card, 2, session)
+                st.button("✅ Good", use_container_width=True, key="btn_good",
+                         on_click=process_review, args=(card, 2, session))
+                st.caption(f"🔵 Anki+UIR: **{predictions['anki_uir'][2]}d**")
+                st.caption(f"⚪ Anki: {predictions['anki_classic'][2]}d")
             with col4:
-                if st.button("🌟 Easy", use_container_width=True):
-                    process_review(card, 3, session)
+                st.button("🌟 Easy", use_container_width=True, key="btn_easy",
+                         on_click=process_review, args=(card, 3, session))
+                st.caption(f"🔵 Anki+UIR: **{predictions['anki_uir'][3]}d**")
+                st.caption(f"⚪ Anki: {predictions['anki_classic'][3]}d")
             
             # Mostrar info de la tarjeta
             st.markdown("---")
