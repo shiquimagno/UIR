@@ -1617,17 +1617,24 @@ def page_semantic_graph():
     # Tabla de similitudes
     st.subheader("Pares Más Similares")
     
-    pairs = []
-    n = len(state.cards)
-    for i in range(n):
-        for j in range(i+1, n):
-            pairs.append({
-                'Tarjeta 1': state.cards[i].question[:50],
-                'Tarjeta 2': state.cards[j].question[:50],
-                'Similitud': state.similarity_matrix[i, j]
-            })
-    
-    df_pairs = pd.DataFrame(pairs).sort_values('Similitud', ascending=False).head(10)
+    if state.similarity_matrix is not None and state.similarity_matrix.size > 0 and not np.all(np.isnan(state.similarity_matrix)):
+        pairs = []
+        n = len(state.cards)
+        for i in range(n):
+            for j in range(i+1, n):
+                pairs.append({
+                    'Tarjeta 1': state.cards[i].question[:50],
+                    'Tarjeta 2': state.cards[j].question[:50],
+                    'Similitud': state.similarity_matrix[i, j]
+                })
+        
+        if pairs:
+            df_pairs = pd.DataFrame(pairs).sort_values('Similitud', ascending=False).head(10)
+            st.dataframe(df_pairs, use_container_width=True)
+        else:
+            st.info("No hay suficientes datos para mostrar pares.")
+    else:
+        st.info("Calcula el grafo primero para ver los pares similares.")
     st.dataframe(df_pairs, use_container_width=True)
     
     # Grafo interactivo
