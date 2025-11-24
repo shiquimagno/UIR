@@ -750,7 +750,8 @@ pages = [
     "Comparador de Algoritmos",
     "Simulación",
     "Calibración",
-    "Export/Import"
+    "Export/Import",
+    "Investigación"
 ]
 
 st.session_state.current_page = st.sidebar.radio("Navegación", pages, 
@@ -1234,6 +1235,39 @@ def process_review(card, grade, session):
 def page_review_session():
     """Sesión interactiva de repaso"""
     st.title("🎯 Sesión de Repaso")
+    
+    # Atajos de teclado (JS Injection)
+    st.components.v1.html("""
+    <script>
+    document.addEventListener('keydown', function(e) {
+        // Space -> Mostrar Respuesta
+        if (e.code === 'Space') {
+            const btnShow = Array.from(window.parent.document.querySelectorAll('button')).find(el => el.innerText.includes('Mostrar Respuesta'));
+            if (btnShow) btnShow.click();
+        }
+        // 1 -> Again
+        if (e.key === '1') {
+            const btnAgain = Array.from(window.parent.document.querySelectorAll('button')).find(el => el.innerText.includes('Again'));
+            if (btnAgain) btnAgain.click();
+        }
+        // 2 -> Hard
+        if (e.key === '2') {
+            const btnHard = Array.from(window.parent.document.querySelectorAll('button')).find(el => el.innerText.includes('Hard'));
+            if (btnHard) btnHard.click();
+        }
+        // 3 -> Good
+        if (e.key === '3') {
+            const btnGood = Array.from(window.parent.document.querySelectorAll('button')).find(el => el.innerText.includes('Good'));
+            if (btnGood) btnGood.click();
+        }
+        // 4 -> Easy
+        if (e.key === '4') {
+            const btnEasy = Array.from(window.parent.document.querySelectorAll('button')).find(el => el.innerText.includes('Easy'));
+            if (btnEasy) btnEasy.click();
+        }
+    });
+    </script>
+    """, height=0)
     
     session = st.session_state.review_session
     
@@ -1843,6 +1877,44 @@ def page_algorithm_comparison():
                      xaxis_title="Días", yaxis_title="Frecuencia", barmode='overlay')
     st.plotly_chart(fig, use_container_width=True)
 
+def page_research():
+    """Página de investigación y teoría"""
+    st.title("📚 Investigación: Teoría UIR/UIC")
+    
+    st.markdown("""
+    ### Introducción
+    Este proyecto implementa un sistema de Repaso Espaciado (Spaced Repetition) potenciado por la **Teoría de Unidades Internacionales de Retención (UIR)** y el **Coeficiente de Interconexión Universal (UIC)**.
+    
+    ### Conceptos Clave
+    
+    #### 1. UIR (Unidad Internacional de Retención)
+    Representa la "vida media" de un recuerdo en el cerebro. Es el tiempo en días que tarda la probabilidad de recordar un ítem en caer al 90% (o un umbral definido).
+    - **UIR Base**: Retención intrínseca del ítem.
+    - **UIR Efectivo**: Retención real modulada por el historial de repasos.
+    
+    #### 2. UIC (Coeficiente de Interconexión Universal)
+    Mide qué tan conectado está un concepto con otros en tu base de conocimiento.
+    - Se calcula mediante **Similitud Semántica** (TF-IDF + Coseno).
+    - **Hipótesis**: Los conceptos altamente conectados (alto UIC) se refuerzan mutuamente y decaen más lentamente, permitiendo intervalos de repaso más largos.
+    
+    ### Algoritmo Híbrido (Anki + UIR)
+    El sistema modifica el algoritmo estándar de Anki (SM-2) multiplicando el intervalo base por un **Factor de Modulación**:
+    
+    $$I_{final} = I_{Anki} \times M_{UIR}$$
+    
+    Donde el factor $M_{UIR}$ premia a las tarjetas con alto UIC y buen historial de retención.
+    
+    ### Recursos y Enlaces
+    
+    - [📄 Paper Original (Teórico)](https://example.com/paper)
+    - [💻 Repositorio en GitHub](https://github.com/shiquimagno/UIR)
+    - [🧠 Documentación Técnica](https://github.com/shiquimagno/UIR/blob/main/TECHNICAL_IMPLEMENTATION.md)
+    
+    ### Referencias
+    1. Ebbinghaus, H. (1885). *Memory: A Contribution to Experimental Psychology*.
+    2. Wozniak, P. A. (1990). *Optimization of learning*.
+    """)
+
 def page_simulation():
     """Simulación de sesiones de repaso"""
     st.title("🔬 Simulación")
@@ -2053,4 +2125,6 @@ elif current_page == "Calibración":
     page_calibration()
 elif current_page == "Export/Import":
     page_export_import()
+elif current_page == "Investigación":
+    page_research()
 
