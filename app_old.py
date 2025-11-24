@@ -33,22 +33,10 @@ class ReviewHistory:
     """Registro de un repaso individual"""
     timestamp: str
     grade: int  # 0=Again, 1=Hard, 2=Good, 3=Easy
-    interval: int = 0  # intervalo en días
-    ease: float = 2.5  # factor de facilidad
-    time_taken: float = 0.0  # segundos
-    reading_time: float = 0.0  # opcional
-    P_recall: float = 0.0  # opcional
-    response_time: float = 0.0 # legacy compatibility
-    interval_days: int = 0 # legacy compatibility
-    
-    def __post_init__(self):
-        # Compatibilidad hacia atrás: si existe response_time pero no time_taken
-        if self.response_time > 0 and self.time_taken == 0:
-            self.time_taken = self.response_time
-            
-        # Compatibilidad hacia atrás: si existe interval_days pero no interval
-        if self.interval_days > 0 and self.interval == 0:
-            self.interval = self.interval_days
+    response_time: float  # segundos
+    reading_time: float  # segundos hasta mostrar respuesta
+    P_recall: float  # probabilidad de recordar estimada
+    interval_days: int  # intervalo hasta este repaso
     
 @dataclass
 class Card:
@@ -580,22 +568,8 @@ def anki_uir_adapted_schedule(card: Card, grade: int, params: Dict[str, float]) 
     
     # 3. Aplicar modulación
     I_final = round(I_anki * UIR_factor)
-    I_final = max(1, int(I_final))
     
-    # 4. Actualizar tarjeta (CRÍTICO: igual que anki_classic_schedule)
-    # Usamos los nuevos EF y n calculados por Anki puro, pero el intervalo modulado
-    _, EF_new, n_new = compute_anki_interval_pure(
-        card.repetition_count,
-        card.easiness_factor,
-        card.interval_days,
-        grade
-    )
-    
-    card.interval_days = I_final
-    card.easiness_factor = EF_new
-    card.repetition_count = n_new
-    
-    return I_final
+    return max(1, I_final)
 
 def predict_intervals_for_all_grades(card: Card, params: Dict[str, float]) -> Dict[str, Dict[int, int]]:
     """
@@ -985,21 +959,21 @@ def page_import():
         
         tags_input = st.text_input("Etiquetas (separadas por comas):", placeholder="python, programación")
         
-        if st.button("Crear Tarjetas"):
+        if st.button("Crear Tarjetas desde Texto"):
             if text_input.strip():
                 lines = text_input.strip().split('\n')
-                created_count = 0
                 tags = [t.strip() for t in tags_input.split(',') if t.strip()]
+                created_count = 0
                 
                 for line in lines:
                     if '==' in line:
                         parts = line.split('==', 1)
-                        question = parts[0].strip()
-                        answer = parts[1].strip()
-                        
-                        if question and answer:
+                        if len(parts) == 2:
+                            question = parts[0].strip()
+                            answer = parts[1].strip()
+                            
                             card = Card(
-                                id=f"card_{len(state.cards)}_{int(time.time())}_{created_count}",
+                                id=f"card_{len(state.cards)}_{int(time.time())}",
                                 question=question,
                                 answer=answer,
                                 tags=tags
@@ -1009,12 +983,11 @@ def page_import():
                 
                 if created_count > 0:
                     save_state(state)
-                    st.success(f"✅ {created_count} tarjetas creadas!")
+                    st.success(f"✅ {created_count} tarjetas creadas exitosamente!")
                     st.rerun()
                 else:
-                    st.warning("No se pudieron crear tarjetas. Verifica el formato.")
-            else:
-                st.warning("El campo de texto está vacío.")
+                    st.warning("No se encontraron tarjetas válidas. Usa el formato: pregunta == respuesta")
+    
     with tab2:
         st.subheader("Importar desde CSV")
         st.markdown("El CSV debe tener columnas: `question,answer` o `front,back` o `item,note`")
@@ -1078,13 +1051,8 @@ def page_import():
 - ¿Qué es Python? >>> Un lenguaje de programación
         """, language="markdown")
         
-        uploaded_md = st.file_uploader("O sube un archivo .md", type=['md'])
-        
-        markdown_input = st.text_area("O pega tu export de RemNote (Markdown):", height=300,
+        markdown_input = st.text_area("Pega tu export de RemNote (Markdown):", height=300,
                                       placeholder="- ¿Pregunta 1? >>>\n    - Respuesta 1\n- ¿Pregunta 2? >>> Respuesta 2")
-        
-        if uploaded_md:
-            markdown_input = uploaded_md.getvalue().decode("utf-8")
         
         tags_md = st.text_input("Etiquetas (separadas por comas):", placeholder="remnote, estudio", key="md_tags")
         
@@ -1190,47 +1158,6 @@ def page_import():
                             st.write(error)
 
 
-def process_review(card, grade, session):
-    """
-    Callback para procesar el repaso de una tarjeta
-    """
-    # Calcular próximo intervalo
-    if state.params:
-        next_interval = anki_uir_adapted_schedule(card, grade, state.params)
-    else:
-        next_interval = anki_classic_schedule(card, grade)
-    
-    # Actualizar historial
-    review_entry = {
-        'timestamp': datetime.now().isoformat(),
-        'grade': grade,
-        'interval': next_interval,
-        'ease': card.easiness_factor,
-        'time_taken': time.time() - session['start_time'] if session['start_time'] else 0
-    }
-    card.history.append(review_entry)
-    
-    # Actualizar próxima fecha
-    card.next_review = compute_next_review_date(card, next_interval)
-    
-    # Actualizar UIR efectivo (simplificado)
-    if len(card.history) > 1:
-        # Recalcular UIR basado en historial
-        pass
-        
-    # Guardar
-    save_state(state)
-    
-    # Si es "Again" (grade=0), volver a agregar la tarjeta al final de la cola
-    if grade == 0:
-        current_card_idx = session['cards_to_review'][session['current_card_idx']]
-        session['cards_to_review'].append(current_card_idx)
-    
-    # Avanzar (Streamlit hará rerun automáticamente después del callback)
-    session['current_card_idx'] += 1
-    session['show_answer'] = False
-    session['start_time'] = time.time()
-
 def page_review_session():
     """Sesión interactiva de repaso"""
     st.title("🎯 Sesión de Repaso")
@@ -1239,6 +1166,7 @@ def page_review_session():
     
     if not session['active']:
         # Seleccionar tarjetas para repasar
+        st.subheader("Iniciar Sesión")
         
         if not state.cards:
             st.warning("No hay tarjetas disponibles. Crea algunas primero.")
@@ -1310,47 +1238,25 @@ def page_review_session():
         st.write(f"**Tarjetas en este modo:** {len(cards_to_review_indices)}")
         st.write(f"**Total tarjetas:** {len(state.cards)}")
         
-        col_start1, col_start2 = st.columns(2)
+        # Botones de inicio
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🚀 Iniciar Sesión", type="primary", disabled=len(cards_to_review_indices)==0):
+                session['active'] = True
+                session['cards_to_review'] = cards_to_review_indices
+                session['current_card_idx'] = 0
+                session['show_answer'] = False
+                session['start_time'] = time.time()
+                st.rerun()
         
-        with col_start1:
-            # Texto dinámico del botón según el modo
-            btn_text = "🚀 Comenzar Repaso"
-            if review_mode == "Solo tarjetas nuevas":
-                btn_text = "🚀 Repasar Nuevas"
-            elif review_mode == "Pendientes (por fecha)":
-                btn_text = "🚀 Repasar Pendientes"
-                
-            if st.button(btn_text, type="primary", use_container_width=True):
-                if cards_to_review_indices:
-                    session['active'] = True
-                    session['cards_to_review'] = cards_to_review_indices
-                    session['current_card_idx'] = 0
-                    session['start_time'] = time.time()
-                    session['show_answer'] = False
-                    st.rerun()
-                else:
-                    st.warning("No hay tarjetas seleccionadas para este modo.")
-        
-        with col_start2:
-            # Botón para repasar solo falladas (Again/Hard recientes)
-            failed_indices = []
-            for i, card in enumerate(state.cards):
-                if card.history:
-                    last_grade = card.history[-1].grade if hasattr(card.history[-1], 'grade') else card.history[-1].get('grade', 0)
-                    if last_grade < 2: # Again or Hard
-                        failed_indices.append(i)
-            
-            if st.button("⚠️ Repasar Falladas Recientes", use_container_width=True):
-                if failed_indices:
-                    session['active'] = True
-                    session['cards_to_review'] = failed_indices
-                    session['current_card_idx'] = 0
-                    session['start_time'] = time.time()
-                    session['show_answer'] = False
-                    st.rerun()
-                else:
-                    st.info("¡Bien hecho! No tienes tarjetas falladas recientemente.")
-
+        with col2:
+            if st.button("📋 Repasar Todas"):
+                session['active'] = True
+                session['cards_to_review'] = list(range(len(state.cards)))
+                session['current_card_idx'] = 0
+                session['show_answer'] = False
+                session['start_time'] = time.time()
+                st.rerun()
     
     else:
         # Sesión activa
@@ -1421,9 +1327,9 @@ def page_review_session():
             with col_a:
                 st.metric("UIC Local", f"{card.UIC_local:.3f}")
             with col_b:
-                st.metric("UIR Efectivo", f"{card.UIR_effective:.1f}d")
-            with col_c:
-                st.metric("Repasos", len(card.history))
+    session['current_card_idx'] += 1
+    session['show_answer'] = False
+    session['start_time'] = time.time()
 
 def page_analytics():
     """Página de Analytics avanzado con comparación temporal"""
@@ -1556,8 +1462,6 @@ def page_analytics():
                     tag_stats[tag] = {'cards': 0, 'reviews': 0, 'successes': 0}
                 
                 tag_stats[tag]['cards'] += 1
-    
-
                 tag_stats[tag]['reviews'] += len(card.history)
                 
                 for r in card.history:
@@ -1676,49 +1580,44 @@ def page_semantic_graph():
             if tfidf_matrix is not None:
                 state.tfidf_matrix = tfidf_matrix
                 state.similarity_matrix = compute_similarity_matrix(tfidf_matrix)
+                
+                # Actualizar UIC local de todas las tarjetas
+                for i, card in enumerate(state.cards):
+                    card.UIC_local = compute_UIC_local(state.similarity_matrix, i)
+                
+                save_state(state)
+                st.success("✅ Grafo reconstruido!")
+                st.rerun()
+    
+    if state.similarity_matrix is None:
+        st.info("Haz clic en 'Reconstruir Grafo' para calcular similitudes.")
+        return
     
     # Heatmap
     st.subheader("Mapa de Calor de Similitudes")
     
-    if state.similarity_matrix is None or state.similarity_matrix.size == 0:
-        st.info("No hay datos de similitud calculados. Haz clic en 'Reconstruir Grafo'.")
-    elif np.all(np.isnan(state.similarity_matrix)):
-        st.warning("La matriz de similitud contiene valores inválidos (NaN). Intenta reconstruir el grafo.")
-    elif state.similarity_matrix.shape[0] != len(state.cards):
-        st.warning("La matriz de similitud está desactualizada (número de tarjetas cambió). Haz clic en 'Reconstruir Grafo'.")
-    else:
-        # Reemplazar posibles NaNs con 0 para visualización
-        matrix_clean = np.nan_to_num(state.similarity_matrix, nan=0.0)
-        
-        fig = px.imshow(matrix_clean,
-                        labels=dict(x="Tarjeta", y="Tarjeta", color="Similitud"),
-                        x=[f"C{i}" for i in range(len(state.cards))],
-                        y=[f"C{i}" for i in range(len(state.cards))],
-                        color_continuous_scale="Viridis")
-        st.plotly_chart(fig, use_container_width=True)
+    fig = px.imshow(state.similarity_matrix,
+                    labels=dict(x="Tarjeta", y="Tarjeta", color="Similitud"),
+                    x=[f"C{i}" for i in range(len(state.cards))],
+                    y=[f"C{i}" for i in range(len(state.cards))],
+                    color_continuous_scale="Viridis")
+    st.plotly_chart(fig, use_container_width=True)
     
     # Tabla de similitudes
     st.subheader("Pares Más Similares")
     
-    if state.similarity_matrix is not None and state.similarity_matrix.size > 0 and not np.all(np.isnan(state.similarity_matrix)):
-        pairs = []
-        n = len(state.cards)
-        for i in range(n):
-            for j in range(i+1, n):
-                pairs.append({
-                    'Tarjeta 1': state.cards[i].question[:50],
-                    'Tarjeta 2': state.cards[j].question[:50],
-                    'Similitud': state.similarity_matrix[i, j]
-                })
-        
-        if pairs:
-            df_pairs = pd.DataFrame(pairs).sort_values('Similitud', ascending=False).head(10)
-            st.dataframe(df_pairs, use_container_width=True)
-        else:
-            st.info("No hay suficientes datos para mostrar pares.")
-    else:
-        st.info("Calcula el grafo primero para ver los pares similares.")
-
+    pairs = []
+    n = len(state.cards)
+    for i in range(n):
+        for j in range(i+1, n):
+            pairs.append({
+                'Tarjeta 1': state.cards[i].question[:50],
+                'Tarjeta 2': state.cards[j].question[:50],
+                'Similitud': state.similarity_matrix[i, j]
+            })
+    
+    df_pairs = pd.DataFrame(pairs).sort_values('Similitud', ascending=False).head(10)
+    st.dataframe(df_pairs, use_container_width=True)
     
     # Grafo interactivo
     st.subheader("Grafo Interactivo")
@@ -1828,32 +1727,16 @@ def page_simulation():
             return
         
         with st.spinner("Simulando..."):
-            # Simulación mejorada
+            # Simulación simple: contar repasos por día
             daily_reviews = {i: 0 for i in range(horizon)}
-            problematic_cards = 0
             
             for card in state.cards:
                 card_copy = Card(**asdict(card))
                 current_day = 0
                 
-                # Probabilidades de calificación (simulando efecto de mejor retención con UIR)
-                if algorithm == "Anki Clásico":
-                    # Distribución estándar: 5% Again, 15% Hard, 50% Good, 30% Easy
-                    probs = [0.05, 0.15, 0.5, 0.3]
-                else:
-                    # Anki+UIR: Se asume que el refuerzo semántico mejora la retención
-                    # Menos "Again" y "Hard", más "Good" y "Easy"
-                    # 2% Again, 8% Hard, 55% Good, 35% Easy
-                    probs = [0.02, 0.08, 0.55, 0.35]
-                
-                has_failed = False
-                
                 while current_day < horizon:
-                    # Simular repaso
-                    grade = np.random.choice([0, 1, 2, 3], p=probs)
-                    
-                    if grade == 0:
-                        has_failed = True
+                    # Simular repaso con probabilidad
+                    grade = np.random.choice([0, 1, 2, 3], p=[0.05, 0.15, 0.5, 0.3])
                     
                     if algorithm == "Anki Clásico":
                         interval = anki_classic_schedule(card_copy, grade)
@@ -1862,9 +1745,6 @@ def page_simulation():
                     
                     daily_reviews[current_day] += 1
                     current_day += interval
-                
-                if has_failed:
-                    problematic_cards += 1
             
             # Visualizar
             df_sim = pd.DataFrame({
@@ -1876,12 +1756,7 @@ def page_simulation():
                          title=f"Repasos por Día - {algorithm}")
             st.plotly_chart(fig, use_container_width=True)
             
-            col_sim1, col_sim2 = st.columns(2)
-            with col_sim1:
-                st.metric("Total de Repasos", sum(daily_reviews.values()))
-            with col_sim2:
-                st.metric("Tarjetas Problemáticas", problematic_cards, 
-                         help="Tarjetas que fallaron al menos una vez durante la simulación")
+            st.metric("Total de Repasos", sum(daily_reviews.values()))
 
 def page_calibration():
     """Calibración de parámetros"""

@@ -25,6 +25,7 @@ wheels/
 
 # Streamlit
 .streamlit/
+!.streamlit/config.toml
 
 # Data (keep structure but ignore state files)
 data/state.json
