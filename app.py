@@ -714,55 +714,6 @@ state = st.session_state.state
     "Export/Import"
 ]
 
-st.session_state.current_page = st.sidebar.radio("Navegación", pages, 
-                                                  index=pages.index(st.session_state.current_page))
-
-st.sidebar.markdown("---")
-st.sidebar.markdown(f"**Tarjetas totales:** {len(state.cards)}")
-st.sidebar.markdown(f"**UIC global:** {compute_UIC_global(state.similarity_matrix) if state.similarity_matrix is not None else 0:.3f}")
-
-# Mostrar racha
-if state.cards:
-    streak = compute_streak(state.cards)
-    if streak > 0:
-        st.sidebar.markdown(f"🔥 **Racha:** {streak} días")
-        if streak >= 7:
-            st.sidebar.success("¡Semana completa!")
-        if streak >= 30:
-            st.sidebar.success("🏆 ¡Mes completo!")
-
-# ============================================================================
-# PAGE FUNCTIONS
-# ============================================================================
-
-def page_dashboard():
-    """Dashboard principal con métricas y resumen"""
-    st.title("📊 Dashboard")
-    
-    # Métricas principales
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Total Tarjetas", len(state.cards))
-    
-    with col2:
-        uic_global = compute_UIC_global(state.similarity_matrix) if state.similarity_matrix is not None else 0
-        st.metric("UIC Global", f"{uic_global:.3f}")
-    
-    with col3:
-        avg_uir = np.mean([c.UIR_effective for c in state.cards]) if state.cards else 0
-        st.metric("UIR Promedio", f"{avg_uir:.1f} días")
-    
-    with col4:
-        # Tarjetas pendientes hoy
-        today = datetime.now()
-        pending = sum(1 for c in state.cards 
-                     if c.next_review and datetime.fromisoformat(c.next_review) <= today)
-        st.metric("Pendientes Hoy", pending)
-    
-    st.markdown("---")
-    
-    # Botón de inicio rápido
     if st.button("🚀 Empezar Sesión de Repaso", type="primary", use_container_width=True):
         st.session_state.current_page = "Sesión de Repaso"
         st.rerun()
@@ -1419,6 +1370,11 @@ def page_analytics():
                     tag_stats[tag] = {'cards': 0, 'reviews': 0, 'successes': 0}
                 
                 tag_stats[tag]['cards'] += 1
+    
+    # Si es "Again" (grade=0), volver a agregar la tarjeta al final de la cola
+    if grade == 0:
+        current_card_idx = session["cards_to_review"][session["current_card_idx"]]
+        session["cards_to_review"].append(current_card_idx)
                 tag_stats[tag]['reviews'] += len(card.history)
                 
                 for r in card.history:
