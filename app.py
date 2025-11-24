@@ -1478,6 +1478,18 @@ def page_review_session():
         card = state.cards[card_idx]
         
         # Mostrar progreso
+        progress = (current_idx) / len(cards_to_review)
+        st.progress(progress)
+        
+        col_header1, col_header2 = st.columns([3, 1])
+        with col_header1:
+            st.write(f"Tarjeta {current_idx + 1} de {len(cards_to_review)}")
+        with col_header2:
+            if st.button("💾 Guardar y Salir"):
+                session['active'] = False
+                st.success("Progreso guardado.")
+                time.sleep(1)
+                st.rerun()
         st.progress((current_idx + 1) / len(cards_to_review))
         st.caption(f"Tarjeta {current_idx + 1} de {len(cards_to_review)}")
         
@@ -2081,10 +2093,10 @@ def page_calibration():
     
     if all_reviews:
         df_history = pd.DataFrame([{
-            'Timestamp': r.timestamp,
-            'Grade': r.grade,
-            'Response Time': f"{r.response_time:.1f}s",
-            'P_recall': f"{r.P_recall:.2f}"
+            'Timestamp': r.timestamp if hasattr(r, 'timestamp') else r.get('timestamp', ''),
+            'Grade': r.grade if hasattr(r, 'grade') else r.get('grade', 0),
+            'Response Time': f"{r.time_taken if hasattr(r, 'time_taken') else r.get('time_taken', r.get('response_time', 0)):.1f}s",
+            'P_recall': f"{r.P_recall if hasattr(r, 'P_recall') else r.get('P_recall', 0):.2f}"
         } for r in all_reviews[-20:]])  # Últimos 20
         
         st.dataframe(df_history, use_container_width=True)
