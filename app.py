@@ -1868,7 +1868,7 @@ def page_semantic_graph():
             # Actualizar UIC local de todas las tarjetas
             if state.similarity_matrix is not None:
                 for i, card in enumerate(state.cards):
-                    card.UIC_local = compute_UIC_local(state.similarity_matrix, i)
+                    card.UIC_local = float(compute_UIC_local(state.similarity_matrix, i))
                 save_state(state)
                 st.info("Valores de UIC actualizados para todas las tarjetas.")
     
