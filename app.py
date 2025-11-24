@@ -39,11 +39,16 @@ class ReviewHistory:
     reading_time: float = 0.0  # opcional
     P_recall: float = 0.0  # opcional
     response_time: float = 0.0 # legacy compatibility
+    interval_days: int = 0 # legacy compatibility
     
     def __post_init__(self):
         # Compatibilidad hacia atrás: si existe response_time pero no time_taken
         if self.response_time > 0 and self.time_taken == 0:
             self.time_taken = self.response_time
+            
+        # Compatibilidad hacia atrás: si existe interval_days pero no interval
+        if self.interval_days > 0 and self.interval == 0:
+            self.interval = self.interval_days
     
 @dataclass
 class Card:
