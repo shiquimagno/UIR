@@ -580,8 +580,22 @@ def anki_uir_adapted_schedule(card: Card, grade: int, params: Dict[str, float]) 
     
     # 3. Aplicar modulación
     I_final = round(I_anki * UIR_factor)
+    I_final = max(1, int(I_final))
     
-    return max(1, I_final)
+    # 4. Actualizar tarjeta (CRÍTICO: igual que anki_classic_schedule)
+    # Usamos los nuevos EF y n calculados por Anki puro, pero el intervalo modulado
+    _, EF_new, n_new = compute_anki_interval_pure(
+        card.repetition_count,
+        card.easiness_factor,
+        card.interval_days,
+        grade
+    )
+    
+    card.interval_days = I_final
+    card.easiness_factor = EF_new
+    card.repetition_count = n_new
+    
+    return I_final
 
 def predict_intervals_for_all_grades(card: Card, params: Dict[str, float]) -> Dict[str, Dict[int, int]]:
     """
@@ -1189,7 +1203,6 @@ def page_review_session():
     
     if not session['active']:
         # Seleccionar tarjetas para repasar
-        st.subheader("Iniciar Sesión")
         
         if not state.cards:
             st.warning("No hay tarjetas disponibles. Crea algunas primero.")
