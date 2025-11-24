@@ -1313,7 +1313,14 @@ def page_review_session():
         col_start1, col_start2 = st.columns(2)
         
         with col_start1:
-            if st.button("🚀 Iniciar Sesión Normal", type="primary", use_container_width=True):
+            # Texto dinámico del botón según el modo
+            btn_text = "🚀 Comenzar Repaso"
+            if review_mode == "Solo tarjetas nuevas":
+                btn_text = "🚀 Repasar Nuevas"
+            elif review_mode == "Pendientes (por fecha)":
+                btn_text = "🚀 Repasar Pendientes"
+                
+            if st.button(btn_text, type="primary", use_container_width=True):
                 if cards_to_review_indices:
                     session['active'] = True
                     session['cards_to_review'] = cards_to_review_indices
