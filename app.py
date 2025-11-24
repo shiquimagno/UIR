@@ -1864,6 +1864,13 @@ def page_semantic_graph():
                             st.success("Grafo reconstruido con Embeddings Semánticos.")
                         else:
                             st.error("Error calculando embeddings.")
+            
+            # Actualizar UIC local de todas las tarjetas
+            if state.similarity_matrix is not None:
+                for i, card in enumerate(state.cards):
+                    card.UIC_local = compute_UIC_local(state.similarity_matrix, i)
+                save_state(state)
+                st.info("Valores de UIC actualizados para todas las tarjetas.")
     
     # Heatmap
     st.subheader("Mapa de Calor de Similitudes")
