@@ -1244,12 +1244,18 @@ def page_review_session():
             st.warning("No hay tarjetas disponibles. Crea algunas primero.")
             return
         
+        # Indicador de Algoritmo Activo
+        if state.params:
+            st.info("🔵 **Algoritmo Activo: Anki+UIR** (Optimizado con Inteligencia Semántica)")
+        else:
+            st.info("⚪ **Algoritmo Activo: Anki Clásico**")
+            
         # Selector de modo de repaso
         st.markdown("### Modo de Repaso")
         review_mode = st.selectbox(
             "Elige cómo quieres repasar:",
             [
-                "Pendientes (por fecha)",
+                "Pendientes (por fecha) - RECOMENDADO",
                 "Aleatorio",
                 "Por tag específico",
                 "Tarjetas difíciles (éxito < 50%)",
@@ -1262,9 +1268,16 @@ def page_review_session():
         today = datetime.now()
         cards_to_review_indices = []
         
-        if review_mode == "Pendientes (por fecha)":
-            cards_to_review_indices = [i for i, c in enumerate(state.cards)
-                                      if not c.next_review or datetime.fromisoformat(c.next_review) <= today]
+        if review_mode == "Pendientes (por fecha) - RECOMENDADO":
+            # Ordenar por fecha de revisión
+            pending = []
+            for i, c in enumerate(state.cards):
+                if not c.next_review or datetime.fromisoformat(c.next_review) <= today:
+                    pending.append((i, c.next_review if c.next_review else "2000-01-01"))
+            
+            # Ordenar: primero las más antiguas
+            pending.sort(key=lambda x: x[1])
+            cards_to_review_indices = [p[0] for p in pending]
         
         elif review_mode == "Aleatorio":
             cards_to_review_indices = list(range(len(state.cards)))
@@ -1317,7 +1330,7 @@ def page_review_session():
             btn_text = "🚀 Comenzar Repaso"
             if review_mode == "Solo tarjetas nuevas":
                 btn_text = "🚀 Repasar Nuevas"
-            elif review_mode == "Pendientes (por fecha)":
+            elif review_mode.startswith("Pendientes"):
                 btn_text = "🚀 Repasar Pendientes"
                 
             if st.button(btn_text, type="primary", use_container_width=True):
