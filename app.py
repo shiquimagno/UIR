@@ -33,10 +33,11 @@ class ReviewHistory:
     """Registro de un repaso individual"""
     timestamp: str
     grade: int  # 0=Again, 1=Hard, 2=Good, 3=Easy
-    response_time: float  # segundos
-    reading_time: float  # segundos hasta mostrar respuesta
-    P_recall: float  # probabilidad de recordar estimada
-    interval_days: int  # intervalo hasta este repaso
+    interval: int  # intervalo en días
+    ease: float  # factor de facilidad
+    time_taken: float  # segundos
+    reading_time: float = 0.0  # opcional
+    P_recall: float = 0.0  # opcional
     
 @dataclass
 class Card:
@@ -1244,29 +1245,6 @@ def page_review_session():
             card_uir_pairs = [(i, c.UIR_effective) for i, c in enumerate(state.cards)]
             card_uir_pairs.sort(key=lambda x: x[1])
             cards_to_review_indices = [i for i, _ in card_uir_pairs]
-        
-        # Mostrar información
-        st.write(f"**Tarjetas en este modo:** {len(cards_to_review_indices)}")
-        st.write(f"**Total tarjetas:** {len(state.cards)}")
-        
-        # Botones de inicio
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🚀 Iniciar Sesión", type="primary", disabled=len(cards_to_review_indices)==0):
-                session['active'] = True
-                session['cards_to_review'] = cards_to_review_indices
-                session['current_card_idx'] = 0
-                session['show_answer'] = False
-                session['start_time'] = time.time()
-                st.rerun()
-        
-        with col2:
-            if st.button("📋 Repasar Todas"):
-                session['active'] = True
-                session['cards_to_review'] = list(range(len(state.cards)))
-                session['current_card_idx'] = 0
-                session['show_answer'] = False
-                session['start_time'] = time.time()
                 st.rerun()
     
     else:
