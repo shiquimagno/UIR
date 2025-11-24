@@ -1128,6 +1128,47 @@ def page_import():
                             st.write(error)
 
 
+def process_review(card, grade, session):
+    """
+    Callback para procesar el repaso de una tarjeta
+    """
+    # Calcular próximo intervalo
+    if state.params:
+        next_interval = anki_uir_adapted_schedule(card, grade, state.params)
+    else:
+        next_interval = anki_classic_schedule(card, grade)
+    
+    # Actualizar historial
+    review_entry = {
+        'timestamp': datetime.now().isoformat(),
+        'grade': grade,
+        'interval': next_interval,
+        'ease': card.easiness_factor,
+        'time_taken': time.time() - session['start_time'] if session['start_time'] else 0
+    }
+    card.history.append(review_entry)
+    
+    # Actualizar próxima fecha
+    card.next_review = compute_next_review_date(card, next_interval)
+    
+    # Actualizar UIR efectivo (simplificado)
+    if len(card.history) > 1:
+        # Recalcular UIR basado en historial
+        pass
+        
+    # Guardar
+    save_state(state)
+    
+    # Si es "Again" (grade=0), volver a agregar la tarjeta al final de la cola
+    if grade == 0:
+        current_card_idx = session['cards_to_review'][session['current_card_idx']]
+        session['cards_to_review'].append(current_card_idx)
+    
+    # Avanzar (Streamlit hará rerun automáticamente después del callback)
+    session['current_card_idx'] += 1
+    session['show_answer'] = False
+    session['start_time'] = time.time()
+
 def page_review_session():
     """Sesión interactiva de repaso"""
     st.title("🎯 Sesión de Repaso")
@@ -1297,9 +1338,9 @@ def page_review_session():
             with col_a:
                 st.metric("UIC Local", f"{card.UIC_local:.3f}")
             with col_b:
-    session['current_card_idx'] += 1
-    session['show_answer'] = False
-    session['start_time'] = time.time()
+                st.metric("UIR Efectivo", f"{card.UIR_effective:.1f}d")
+            with col_c:
+                st.metric("Repasos", len(card.history))
 
 def page_analytics():
     """Página de Analytics avanzado con comparación temporal"""
