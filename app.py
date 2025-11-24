@@ -709,12 +709,221 @@ if 'review_session' not in st.session_state:
 state = st.session_state.state
 
 # ============================================================================
+# NAVIGATION
+# ============================================================================
+
+st.sidebar.title("🧠 Simulador UIR/UIC")
+st.sidebar.markdown("---")
+
+pages = [
+    "Dashboard",
+    "Crear/Importar Tarjetas",
+    "Sesión de Repaso",
+    "📊 Analytics",
+    "Grafo Semántico",
+    "Comparador de Algoritmos",
     "Simulación",
     "Calibración",
     "Export/Import"
 ]
 
+st.session_state.current_page = st.sidebar.radio("Navegación", pages, 
+                                                  index=pages.index(st.session_state.current_page))
+
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"**Tarjetas totales:** {len(state.cards)}")
+st.sidebar.markdown(f"**UIC global:** {compute_UIC_global(state.similarity_matrix) if state.similarity_matrix is not None else 0:.3f}")
+
+# Mostrar racha
+if state.cards:
+    streak = compute_streak(state.cards)
+    if streak > 0:
+        st.sidebar.markdown(f"🔥 **Racha:** {streak} días")
+        if streak >= 7:
+            st.sidebar.success("¡Semana completa!")
+        if streak >= 30:
+            st.sidebar.success("🏆 ¡Mes completo!")
+
+# ============================================================================
+# PAGE FUNCTIONS
+# ============================================================================
+
+def page_dashboard():
+    """Dashboard principal con métricas y resumen"""
+    st.title("📊 Dashboard")
+    
+    # Métricas principales
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Total Tarjetas", len(state.cards))
+    
+    with col2:
+        uic_global = compute_UIC_global(state.similarity_matrix) if state.similarity_matrix is not None else 0
+        st.metric("UIC Global", f"{uic_global:.3f}")
+    
+    with col3:
+        avg_uir = np.mean([c.UIR_effective for c in state.cards]) if state.cards else 0
+        st.metric("UIR Promedio", f"{avg_uir:.1f} días")
+    
+    with col4:
+        # Tarjetas pendientes hoy
+        today = datetime.now()
+        pending = sum(1 for c in state.cards 
+                     if c.next_review and datetime.fromisoformat(c.next_review) <= today)
+        st.metric("Pendientes Hoy", pending)
+    
+    st.markdown("---")
+    
+    # Botón de inicio rápido
+    if st.button("🚀 Empezar Sesión de Repaso", type="primary", use_container_width=True):
+        st.session_state.current_page = "Sesión de Repaso"
+        st.rerun()
+    
+    # Gráficas mejoradas
+    if state.cards:
+        # Tabs para organizar visualizaciones
+        tab1, tab2, tab3, tab4 = st.tabs(["📈 Actividad", "📊 Distribuciones", "🔄 Retención", "📅 Timeline"])
+        
+        with tab1:
+            st.subheader("Actividad de Repasos")
+            
+            # Recopilar historial de todos los repasos
+            all_reviews = []
+            for card in state.cards:
+                for review in card.history:
+                    timestamp = review.timestamp if hasattr(review, 'timestamp') else review.get('timestamp', '')
+                    grade = review.grade if hasattr(review, 'grade') else review.get('grade', 0)
+                    if timestamp:
+                        all_reviews.append({
+                            'timestamp': datetime.fromisoformat(timestamp),
+                            'grade': grade
+                        })
+            
+            if all_reviews:
+                df_reviews = pd.DataFrame(all_reviews)
+                df_reviews['date'] = df_reviews['timestamp'].dt.date
+                
+                # Gráfica de barras por día
+                daily_reviews = df_reviews.groupby('date').size().reset_index(name='count')
+                fig1 = px.bar(daily_reviews, x='date', y='count', 
+                            title="Repasos por Día",
+                            labels={'date': 'Fecha', 'count': 'Número de Repasos'})
+                st.plotly_chart(fig1, use_container_width=True)
+                
+                # Calendario de calor (heatmap de actividad)
+                df_reviews['day_of_week'] = df_reviews['timestamp'].dt.day_name()
+                df_reviews['hour'] = df_reviews['timestamp'].dt.hour
+                heatmap_data = df_reviews.groupby(['day_of_week', 'hour']).size().reset_index(name='count')
+                
+                # Ordenar días de la semana
+                day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                heatmap_pivot = heatmap_data.pivot(index='day_of_week', columns='hour', values='count').fillna(0)
+                heatmap_pivot = heatmap_pivot.reindex(day_order)
+                
+                fig_heat = px.imshow(heatmap_pivot,
+                                    labels=dict(x="Hora del Día", y="Día de la Semana", color="Repasos"),
+                                    title="Patrón de Actividad (Heatmap)",
+                                    color_continuous_scale="Blues")
+                st.plotly_chart(fig_heat, use_container_width=True)
+            else:
+                st.info("No hay repasos registrados aún.")
+        
+        with tab2:
+            st.subheader("Distribuciones")
+            
+            col_a, col_b = st.columns(2)
+            
+            with col_a:
+                # Distribución de UIC
+                uic_values = [c.UIC_local for c in state.cards]
+                fig_uic = px.histogram(x=uic_values, nbins=20,
+                                      title="Distribución de UIC Local",
+                                      labels={'x': 'UIC Local', 'y': 'Frecuencia'})
+                st.plotly_chart(fig_uic, use_container_width=True)
+            
+            with col_b:
+                # Distribución de UIR
+                uir_values = [c.UIR_effective for c in state.cards]
+                fig_uir = px.histogram(x=uir_values, nbins=20,
+                                      title="Distribución de UIR Efectivo",
+                                      labels={'x': 'UIR Efectivo (días)', 'y': 'Frecuencia'})
+                st.plotly_chart(fig_uir, use_container_width=True)
+            
+            # Distribución de intervalos
+            intervals = []
+            for c in state.cards:
+                if c.next_review:
+                    try:
+                        next_dt = datetime.fromisoformat(c.next_review)
+                        days_until = (next_dt - datetime.now()).days
+                        intervals.append(max(0, days_until))
+                    except:
+                        pass
+            
+            if intervals:
+                fig_int = px.histogram(x=intervals, nbins=30,
+                                      title="Distribución de Próximos Repasos",
+                                      labels={'x': 'Días hasta próximo repaso', 'y': 'Frecuencia'})
+                st.plotly_chart(fig_int, use_container_width=True)
+        
+        with tab3:
+            st.subheader("Curva de Retención Promedio")
+            
+            # Calcular curva P(t) = exp(-t/UIR_eff) promedio
+            avg_uir_eff = np.mean([c.UIR_effective for c in state.cards]) if state.cards else 7.0
+            
+            t_values = np.linspace(0, 90, 100)
             p_values = np.exp(-t_values / avg_uir_eff)
+            
+            fig_retention = go.Figure()
+            fig_retention.add_trace(go.Scatter(x=t_values, y=p_values,
+                                              mode='lines',
+                                              name=f'P(t) = exp(-t/{avg_uir_eff:.1f})',
+                                              line=dict(color='blue', width=3)))
+            
+            # Línea de referencia (37% en t=UIR)
+            fig_retention.add_hline(y=0.37, line_dash="dash", line_color="red",
+                                   annotation_text="37% (1/e)")
+            fig_retention.add_vline(x=avg_uir_eff, line_dash="dash", line_color="red",
+                                   annotation_text=f"UIR={avg_uir_eff:.1f}d")
+            
+            fig_retention.update_layout(
+                title="Curva de Retención Promedio",
+                xaxis_title="Tiempo (días)",
+                yaxis_title="Probabilidad de Recordar",
+                yaxis=dict(range=[0, 1])
+            )
+            st.plotly_chart(fig_retention, use_container_width=True)
+            
+            st.caption(f"📊 UIR promedio: {avg_uir_eff:.1f} días - Probabilidad cae a 37% después de {avg_uir_eff:.1f} días")
+        
+        with tab4:
+            st.subheader("Evolución Temporal")
+            
+            # Timeline de UIR y UIC
+            timeline_data = []
+            for card in state.cards:
+                for i, review in enumerate(card.history):
+                    timestamp = review.timestamp if hasattr(review, 'timestamp') else review.get('timestamp', '')
+                    if timestamp:
+                        timeline_data.append({
+                            'timestamp': datetime.fromisoformat(timestamp),
+                            'UIR_base': card.UIR_base,  # Valor actual (simplificado)
+                            'UIC_local': card.UIC_local
+                        })
+            
+            if timeline_data:
+                df_timeline = pd.DataFrame(timeline_data)
+                df_timeline = df_timeline.sort_values('timestamp')
+                
+                # Agrupar por día y promediar
+                df_timeline['date'] = df_timeline['timestamp'].dt.date
+                daily_avg = df_timeline.groupby('date').agg({
+                    'UIR_base': 'mean',
+                    'UIC_local': 'mean'
+                }).reset_index()
+                
                 fig_timeline = go.Figure()
                 fig_timeline.add_trace(go.Scatter(x=daily_avg['date'], y=daily_avg['UIR_base'],
                                                  mode='lines+markers', name='UIR Base Promedio',
