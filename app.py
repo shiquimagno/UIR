@@ -1684,6 +1684,8 @@ def page_semantic_graph():
         st.info("No hay datos de similitud calculados. Haz clic en 'Reconstruir Grafo'.")
     elif np.all(np.isnan(state.similarity_matrix)):
         st.warning("La matriz de similitud contiene valores inválidos (NaN). Intenta reconstruir el grafo.")
+    elif state.similarity_matrix.shape[0] != len(state.cards):
+        st.warning("La matriz de similitud está desactualizada (número de tarjetas cambió). Haz clic en 'Reconstruir Grafo'.")
     else:
         # Reemplazar posibles NaNs con 0 para visualización
         matrix_clean = np.nan_to_num(state.similarity_matrix, nan=0.0)
