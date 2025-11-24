@@ -714,55 +714,6 @@ state = st.session_state.state
     "Export/Import"
 ]
 
-    if st.button("🚀 Empezar Sesión de Repaso", type="primary", use_container_width=True):
-        st.session_state.current_page = "Sesión de Repaso"
-        st.rerun()
-    
-    # Gráficas mejoradas
-    if state.cards:
-        # Tabs para organizar visualizaciones
-        tab1, tab2, tab3, tab4 = st.tabs(["📈 Actividad", "📊 Distribuciones", "🔄 Retención", "📅 Timeline"])
-        
-        with tab1:
-            st.subheader("Actividad de Repasos")
-            
-            # Recopilar historial de todos los repasos
-            all_reviews = []
-            for card in state.cards:
-                for review in card.history:
-                    timestamp = review.timestamp if hasattr(review, 'timestamp') else review.get('timestamp', '')
-                    grade = review.grade if hasattr(review, 'grade') else review.get('grade', 0)
-                    if timestamp:
-                        all_reviews.append({
-                            'timestamp': datetime.fromisoformat(timestamp),
-                            'grade': grade
-                        })
-            
-            if all_reviews:
-                df_reviews = pd.DataFrame(all_reviews)
-                df_reviews['date'] = df_reviews['timestamp'].dt.date
-                
-                # Gráfica de barras por día
-                daily_reviews = df_reviews.groupby('date').size().reset_index(name='count')
-                fig1 = px.bar(daily_reviews, x='date', y='count', 
-                            title="Repasos por Día",
-                            labels={'date': 'Fecha', 'count': 'Número de Repasos'})
-                st.plotly_chart(fig1, use_container_width=True)
-                
-                # Calendario de calor (heatmap de actividad)
-                df_reviews['day_of_week'] = df_reviews['timestamp'].dt.day_name()
-                df_reviews['hour'] = df_reviews['timestamp'].dt.hour
-                heatmap_data = df_reviews.groupby(['day_of_week', 'hour']).size().reset_index(name='count')
-                
-                # Ordenar días de la semana
-                day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-                heatmap_pivot = heatmap_data.pivot(index='day_of_week', columns='hour', values='count').fillna(0)
-                heatmap_pivot = heatmap_pivot.reindex(day_order)
-                
-                fig_heat = px.imshow(heatmap_pivot,
-                                    labels=dict(x="Hora del Día", y="Día de la Semana", color="Repasos"),
-                                    title="Patrón de Actividad (Heatmap)",
-                                    color_continuous_scale="Blues")
                 st.plotly_chart(fig_heat, use_container_width=True)
             else:
                 st.info("No hay repasos registrados aún.")
