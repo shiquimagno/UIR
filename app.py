@@ -715,55 +715,6 @@ state = st.session_state.state
 ]
 
             p_values = np.exp(-t_values / avg_uir_eff)
-            
-            fig_retention = go.Figure()
-            fig_retention.add_trace(go.Scatter(x=t_values, y=p_values,
-                                              mode='lines',
-                                              name=f'P(t) = exp(-t/{avg_uir_eff:.1f})',
-                                              line=dict(color='blue', width=3)))
-            
-            # Línea de referencia (37% en t=UIR)
-            fig_retention.add_hline(y=0.37, line_dash="dash", line_color="red",
-                                   annotation_text="37% (1/e)")
-            fig_retention.add_vline(x=avg_uir_eff, line_dash="dash", line_color="red",
-                                   annotation_text=f"UIR={avg_uir_eff:.1f}d")
-            
-            fig_retention.update_layout(
-                title="Curva de Retención Promedio",
-                xaxis_title="Tiempo (días)",
-                yaxis_title="Probabilidad de Recordar",
-                yaxis=dict(range=[0, 1])
-            )
-            st.plotly_chart(fig_retention, use_container_width=True)
-            
-            st.caption(f"📊 UIR promedio: {avg_uir_eff:.1f} días - Probabilidad cae a 37% después de {avg_uir_eff:.1f} días")
-        
-        with tab4:
-            st.subheader("Evolución Temporal")
-            
-            # Timeline de UIR y UIC
-            timeline_data = []
-            for card in state.cards:
-                for i, review in enumerate(card.history):
-                    timestamp = review.timestamp if hasattr(review, 'timestamp') else review.get('timestamp', '')
-                    if timestamp:
-                        timeline_data.append({
-                            'timestamp': datetime.fromisoformat(timestamp),
-                            'UIR_base': card.UIR_base,  # Valor actual (simplificado)
-                            'UIC_local': card.UIC_local
-                        })
-            
-            if timeline_data:
-                df_timeline = pd.DataFrame(timeline_data)
-                df_timeline = df_timeline.sort_values('timestamp')
-                
-                # Agrupar por día y promediar
-                df_timeline['date'] = df_timeline['timestamp'].dt.date
-                daily_avg = df_timeline.groupby('date').agg({
-                    'UIR_base': 'mean',
-                    'UIC_local': 'mean'
-                }).reset_index()
-                
                 fig_timeline = go.Figure()
                 fig_timeline.add_trace(go.Scatter(x=daily_avg['date'], y=daily_avg['UIR_base'],
                                                  mode='lines+markers', name='UIR Base Promedio',
