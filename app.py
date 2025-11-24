@@ -35,9 +35,15 @@ class ReviewHistory:
     grade: int  # 0=Again, 1=Hard, 2=Good, 3=Easy
     interval: int  # intervalo en días
     ease: float  # factor de facilidad
-    time_taken: float  # segundos
+    time_taken: float = 0.0  # segundos
     reading_time: float = 0.0  # opcional
     P_recall: float = 0.0  # opcional
+    response_time: float = 0.0 # legacy compatibility
+    
+    def __post_init__(self):
+        # Compatibilidad hacia atrás: si existe response_time pero no time_taken
+        if self.response_time > 0 and self.time_taken == 0:
+            self.time_taken = self.response_time
     
 @dataclass
 class Card:
