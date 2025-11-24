@@ -713,57 +713,6 @@ state = st.session_state.state
 # ============================================================================
 
 st.sidebar.title("🧠 Simulador UIR/UIC")
-
-# Usuario y controles
-st.sidebar.markdown(f"👤 **{username}**")
-
-col_a, col_b = st.sidebar.columns(2)
-with col_a:
-    # Toggle de modo oscuro/claro
-    mode_label = "☀️ Claro" if st.session_state.dark_mode else "🌙 Oscuro"
-    if st.button(mode_label, key="dark_mode_toggle"):
-        st.session_state.dark_mode = not st.session_state.dark_mode
-        st.rerun()
-
-with col_b:
-    if st.button("🚪 Salir", key="logout_btn"):
-        auth.logout()
-
-# Aplicar tema según el modo
-if st.session_state.dark_mode:
-    st.markdown("""
-    <style>
-        .stApp {
-            background-color: #0E1117;
-            color: #FAFAFA;
-        }
-        .stSidebar {
-            background-color: #262730;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-    <style>
-        .stApp {
-            background-color: #FFFFFF;
-            color: #1E1E1E;
-        }
-        .stSidebar {
-            background-color: #F8F9FA;
-        }
-        .stMarkdown, .stText {
-            color: #1E1E1E !important;
-        }
-        h1, h2, h3, h4, h5, h6 {
-            color: #1E1E1E !important;
-        }
-        .stButton button {
-            color: #1E1E1E;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
 st.sidebar.markdown("---")
 
 pages = [
@@ -1378,33 +1327,6 @@ def page_review_session():
             with col_a:
                 st.metric("UIC Local", f"{card.UIC_local:.3f}")
             with col_b:
-                st.metric("UIR Base", f"{card.UIR_base:.1f} días")
-            with col_c:
-                st.metric("UIR Efectivo", f"{card.UIR_effective:.1f} días")
-
-def process_review(card: Card, grade: int, session: dict):
-    """Procesar un repaso y actualizar la tarjeta"""
-    reading_time = session['show_time'] - session['start_time']
-    response_time = time.time() - session['show_time']
-    
-    # Actualizar UIR/UIC
-    update_on_review(card, grade, response_time, reading_time, state.params)
-    
-    # Calcular próximo intervalo (Anki+UIR)
-    interval = anki_uir_adapted_schedule(card, grade, state.params)
-    card.next_review = compute_next_review_date(card, interval)
-    
-    # Guardar
-    save_state(state)
-    
-    # Si es "Again" (grade=0), volver a agregar la tarjeta al final de la cola
-    if grade == 0:
-        # Obtener el índice de la tarjeta actual
-        current_card_idx = session['cards_to_review'][session['current_card_idx']]
-        # Agregar al final de la cola
-        session['cards_to_review'].append(current_card_idx)
-    
-    # Avanzar (Streamlit hará rerun automáticamente después del callback)
     session['current_card_idx'] += 1
     session['show_answer'] = False
     session['start_time'] = time.time()
