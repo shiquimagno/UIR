@@ -1597,12 +1597,20 @@ def page_semantic_graph():
     # Heatmap
     st.subheader("Mapa de Calor de Similitudes")
     
-    fig = px.imshow(state.similarity_matrix,
-                    labels=dict(x="Tarjeta", y="Tarjeta", color="Similitud"),
-                    x=[f"C{i}" for i in range(len(state.cards))],
-                    y=[f"C{i}" for i in range(len(state.cards))],
-                    color_continuous_scale="Viridis")
-    st.plotly_chart(fig, use_container_width=True)
+    if state.similarity_matrix is None or state.similarity_matrix.size == 0:
+        st.info("No hay datos de similitud calculados. Haz clic en 'Reconstruir Grafo'.")
+    elif np.all(np.isnan(state.similarity_matrix)):
+        st.warning("La matriz de similitud contiene valores inválidos (NaN). Intenta reconstruir el grafo.")
+    else:
+        # Reemplazar posibles NaNs con 0 para visualización
+        matrix_clean = np.nan_to_num(state.similarity_matrix, nan=0.0)
+        
+        fig = px.imshow(matrix_clean,
+                        labels=dict(x="Tarjeta", y="Tarjeta", color="Similitud"),
+                        x=[f"C{i}" for i in range(len(state.cards))],
+                        y=[f"C{i}" for i in range(len(state.cards))],
+                        color_continuous_scale="Viridis")
+        st.plotly_chart(fig, use_container_width=True)
     
     # Tabla de similitudes
     st.subheader("Pares Más Similares")
