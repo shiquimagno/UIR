@@ -1926,7 +1926,7 @@ def page_semantic_graph():
             for j in range(i+1, n):
                 if i < state.similarity_matrix.shape[0] and j < state.similarity_matrix.shape[1]:
                     if state.similarity_matrix[i, j] > threshold:
-                        G.add_edge(i, j, weight=state.similarity_matrix[i, j])
+                        G.add_edge(i, j, weight=float(state.similarity_matrix[i, j]))
         
         # Visualizar con pyvis
         try:
