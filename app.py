@@ -1245,7 +1245,7 @@ def page_review_session():
             card_uir_pairs = [(i, c.UIR_effective) for i, c in enumerate(state.cards)]
             card_uir_pairs.sort(key=lambda x: x[1])
             cards_to_review_indices = [i for i, _ in card_uir_pairs]
-                st.rerun()
+
     
     else:
         # Sesión activa
