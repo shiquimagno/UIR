@@ -984,6 +984,37 @@ def page_import():
                                   placeholder="¿Qué es Python? == Un lenguaje de programación\n¿Qué es Streamlit? == Framework para apps de datos")
         
         tags_input = st.text_input("Etiquetas (separadas por comas):", placeholder="python, programación")
+        
+        if st.button("Crear Tarjetas"):
+            if text_input.strip():
+                lines = text_input.strip().split('\n')
+                created_count = 0
+                tags = [t.strip() for t in tags_input.split(',') if t.strip()]
+                
+                for line in lines:
+                    if '==' in line:
+                        parts = line.split('==', 1)
+                        question = parts[0].strip()
+                        answer = parts[1].strip()
+                        
+                        if question and answer:
+                            card = Card(
+                                id=f"card_{len(state.cards)}_{int(time.time())}_{created_count}",
+                                question=question,
+                                answer=answer,
+                                tags=tags
+                            )
+                            state.cards.append(card)
+                            created_count += 1
+                
+                if created_count > 0:
+                    save_state(state)
+                    st.success(f"✅ {created_count} tarjetas creadas!")
+                    st.rerun()
+                else:
+                    st.warning("No se pudieron crear tarjetas. Verifica el formato.")
+            else:
+                st.warning("El campo de texto está vacío.")
     with tab2:
         st.subheader("Importar desde CSV")
         st.markdown("El CSV debe tener columnas: `question,answer` o `front,back` o `item,note`")
@@ -1047,8 +1078,13 @@ def page_import():
 - ¿Qué es Python? >>> Un lenguaje de programación
         """, language="markdown")
         
-        markdown_input = st.text_area("Pega tu export de RemNote (Markdown):", height=300,
+        uploaded_md = st.file_uploader("O sube un archivo .md", type=['md'])
+        
+        markdown_input = st.text_area("O pega tu export de RemNote (Markdown):", height=300,
                                       placeholder="- ¿Pregunta 1? >>>\n    - Respuesta 1\n- ¿Pregunta 2? >>> Respuesta 2")
+        
+        if uploaded_md:
+            markdown_input = uploaded_md.getvalue().decode("utf-8")
         
         tags_md = st.text_input("Etiquetas (separadas por comas):", placeholder="remnote, estudio", key="md_tags")
         
@@ -1269,6 +1305,44 @@ def page_review_session():
             card_uir_pairs = [(i, c.UIR_effective) for i, c in enumerate(state.cards)]
             card_uir_pairs.sort(key=lambda x: x[1])
             cards_to_review_indices = [i for i, _ in card_uir_pairs]
+        
+        # Mostrar información
+        st.write(f"**Tarjetas en este modo:** {len(cards_to_review_indices)}")
+        st.write(f"**Total tarjetas:** {len(state.cards)}")
+        
+        col_start1, col_start2 = st.columns(2)
+        
+        with col_start1:
+            if st.button("🚀 Iniciar Sesión Normal", type="primary", use_container_width=True):
+                if cards_to_review_indices:
+                    session['active'] = True
+                    session['cards_to_review'] = cards_to_review_indices
+                    session['current_card_idx'] = 0
+                    session['start_time'] = time.time()
+                    session['show_answer'] = False
+                    st.rerun()
+                else:
+                    st.warning("No hay tarjetas seleccionadas para este modo.")
+        
+        with col_start2:
+            # Botón para repasar solo falladas (Again/Hard recientes)
+            failed_indices = []
+            for i, card in enumerate(state.cards):
+                if card.history:
+                    last_grade = card.history[-1].grade if hasattr(card.history[-1], 'grade') else card.history[-1].get('grade', 0)
+                    if last_grade < 2: # Again or Hard
+                        failed_indices.append(i)
+            
+            if st.button("⚠️ Repasar Falladas Recientes", use_container_width=True):
+                if failed_indices:
+                    session['active'] = True
+                    session['cards_to_review'] = failed_indices
+                    session['current_card_idx'] = 0
+                    session['start_time'] = time.time()
+                    session['show_answer'] = False
+                    st.rerun()
+                else:
+                    st.info("¡Bien hecho! No tienes tarjetas falladas recientemente.")
 
     
     else:
