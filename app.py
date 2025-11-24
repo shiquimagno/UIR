@@ -709,19 +709,6 @@ if 'review_session' not in st.session_state:
 state = st.session_state.state
 
 # ============================================================================
-# NAVIGATION
-# ============================================================================
-
-st.sidebar.title("🧠 Simulador UIR/UIC")
-st.sidebar.markdown("---")
-
-pages = [
-    "Dashboard",
-    "Crear/Importar Tarjetas",
-    "Sesión de Repaso",
-    "📊 Analytics",
-    "Grafo Semántico",
-    "Comparador de Algoritmos",
     "Simulación",
     "Calibración",
     "Export/Import"
@@ -958,36 +945,6 @@ def page_import():
                                   placeholder="¿Qué es Python? == Un lenguaje de programación\n¿Qué es Streamlit? == Framework para apps de datos")
         
         tags_input = st.text_input("Etiquetas (separadas por comas):", placeholder="python, programación")
-        
-        if st.button("Crear Tarjetas desde Texto"):
-            if text_input.strip():
-                lines = text_input.strip().split('\n')
-                tags = [t.strip() for t in tags_input.split(',') if t.strip()]
-                created_count = 0
-                
-                for line in lines:
-                    if '==' in line:
-                        parts = line.split('==', 1)
-                        if len(parts) == 2:
-                            question = parts[0].strip()
-                            answer = parts[1].strip()
-                            
-                            card = Card(
-                                id=f"card_{len(state.cards)}_{int(time.time())}",
-                                question=question,
-                                answer=answer,
-                                tags=tags
-                            )
-                            state.cards.append(card)
-                            created_count += 1
-                
-                if created_count > 0:
-                    save_state(state)
-                    st.success(f"✅ {created_count} tarjetas creadas exitosamente!")
-                    st.rerun()
-                else:
-                    st.warning("No se encontraron tarjetas válidas. Usa el formato: pregunta == respuesta")
-    
     with tab2:
         st.subheader("Importar desde CSV")
         st.markdown("El CSV debe tener columnas: `question,answer` o `front,back` o `item,note`")
@@ -1580,18 +1537,6 @@ def page_semantic_graph():
             if tfidf_matrix is not None:
                 state.tfidf_matrix = tfidf_matrix
                 state.similarity_matrix = compute_similarity_matrix(tfidf_matrix)
-                
-                # Actualizar UIC local de todas las tarjetas
-                for i, card in enumerate(state.cards):
-                    card.UIC_local = compute_UIC_local(state.similarity_matrix, i)
-                
-                save_state(state)
-                st.success("✅ Grafo reconstruido!")
-                st.rerun()
-    
-    if state.similarity_matrix is None:
-        st.info("Haz clic en 'Reconstruir Grafo' para calcular similitudes.")
-        return
     
     # Heatmap
     st.subheader("Mapa de Calor de Similitudes")
