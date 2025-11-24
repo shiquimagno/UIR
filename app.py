@@ -714,55 +714,6 @@ state = st.session_state.state
     "Export/Import"
 ]
 
-                st.plotly_chart(fig_heat, use_container_width=True)
-            else:
-                st.info("No hay repasos registrados aún.")
-        
-        with tab2:
-            st.subheader("Distribuciones")
-            
-            col_a, col_b = st.columns(2)
-            
-            with col_a:
-                # Distribución de UIC
-                uic_values = [c.UIC_local for c in state.cards]
-                fig_uic = px.histogram(x=uic_values, nbins=20,
-                                      title="Distribución de UIC Local",
-                                      labels={'x': 'UIC Local', 'y': 'Frecuencia'})
-                st.plotly_chart(fig_uic, use_container_width=True)
-            
-            with col_b:
-                # Distribución de UIR
-                uir_values = [c.UIR_effective for c in state.cards]
-                fig_uir = px.histogram(x=uir_values, nbins=20,
-                                      title="Distribución de UIR Efectivo",
-                                      labels={'x': 'UIR Efectivo (días)', 'y': 'Frecuencia'})
-                st.plotly_chart(fig_uir, use_container_width=True)
-            
-            # Distribución de intervalos
-            intervals = []
-            for c in state.cards:
-                if c.next_review:
-                    try:
-                        next_dt = datetime.fromisoformat(c.next_review)
-                        days_until = (next_dt - datetime.now()).days
-                        intervals.append(max(0, days_until))
-                    except:
-                        pass
-            
-            if intervals:
-                fig_int = px.histogram(x=intervals, nbins=30,
-                                      title="Distribución de Próximos Repasos",
-                                      labels={'x': 'Días hasta próximo repaso', 'y': 'Frecuencia'})
-                st.plotly_chart(fig_int, use_container_width=True)
-        
-        with tab3:
-            st.subheader("Curva de Retención Promedio")
-            
-            # Calcular curva P(t) = exp(-t/UIR_eff) promedio
-            avg_uir_eff = np.mean([c.UIR_effective for c in state.cards]) if state.cards else 7.0
-            
-            t_values = np.linspace(0, 90, 100)
             p_values = np.exp(-t_values / avg_uir_eff)
             
             fig_retention = go.Figure()
