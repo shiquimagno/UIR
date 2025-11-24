@@ -1736,16 +1736,32 @@ def page_simulation():
             return
         
         with st.spinner("Simulando..."):
-            # Simulación simple: contar repasos por día
+            # Simulación mejorada
             daily_reviews = {i: 0 for i in range(horizon)}
+            problematic_cards = 0
             
             for card in state.cards:
                 card_copy = Card(**asdict(card))
                 current_day = 0
                 
+                # Probabilidades de calificación (simulando efecto de mejor retención con UIR)
+                if algorithm == "Anki Clásico":
+                    # Distribución estándar: 5% Again, 15% Hard, 50% Good, 30% Easy
+                    probs = [0.05, 0.15, 0.5, 0.3]
+                else:
+                    # Anki+UIR: Se asume que el refuerzo semántico mejora la retención
+                    # Menos "Again" y "Hard", más "Good" y "Easy"
+                    # 2% Again, 8% Hard, 55% Good, 35% Easy
+                    probs = [0.02, 0.08, 0.55, 0.35]
+                
+                has_failed = False
+                
                 while current_day < horizon:
-                    # Simular repaso con probabilidad
-                    grade = np.random.choice([0, 1, 2, 3], p=[0.05, 0.15, 0.5, 0.3])
+                    # Simular repaso
+                    grade = np.random.choice([0, 1, 2, 3], p=probs)
+                    
+                    if grade == 0:
+                        has_failed = True
                     
                     if algorithm == "Anki Clásico":
                         interval = anki_classic_schedule(card_copy, grade)
@@ -1754,6 +1770,9 @@ def page_simulation():
                     
                     daily_reviews[current_day] += 1
                     current_day += interval
+                
+                if has_failed:
+                    problematic_cards += 1
             
             # Visualizar
             df_sim = pd.DataFrame({
@@ -1765,7 +1784,12 @@ def page_simulation():
                          title=f"Repasos por Día - {algorithm}")
             st.plotly_chart(fig, use_container_width=True)
             
-            st.metric("Total de Repasos", sum(daily_reviews.values()))
+            col_sim1, col_sim2 = st.columns(2)
+            with col_sim1:
+                st.metric("Total de Repasos", sum(daily_reviews.values()))
+            with col_sim2:
+                st.metric("Tarjetas Problemáticas", problematic_cards, 
+                         help="Tarjetas que fallaron al menos una vez durante la simulación")
 
 def page_calibration():
     """Calibración de parámetros"""
