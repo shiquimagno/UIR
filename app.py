@@ -20,6 +20,11 @@ from pyvis.network import Network
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 import time
+try:
+    from sentence_transformers import SentenceTransformer
+    SENTENCE_TRANSFORMER_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMER_AVAILABLE = False
 
 # Importar módulo de autenticación
 import auth
@@ -332,6 +337,45 @@ def compute_tfidf_from_cards(cards: List[Card]) -> Tuple[Optional[np.ndarray], O
     # Convertir cards a tupla de tuplas para que sea hashable
     cards_data = tuple((c.id, c.question, c.answer) for c in cards)
     return compute_tfidf(cards_data)
+
+@st.cache_resource
+def load_embedding_model():
+    """Carga el modelo de embeddings (cacheado)"""
+    if not SENTENCE_TRANSFORMER_AVAILABLE:
+        return None
+    try:
+        # Usar un modelo ligero y rápido
+        return SentenceTransformer('all-MiniLM-L6-v2')
+    except Exception as e:
+        st.error(f"Error cargando modelo de embeddings: {e}")
+        return None
+
+@st.cache_data
+def compute_embeddings(cards_data: Tuple[Tuple[str, str, str], ...]) -> Optional[np.ndarray]:
+    """
+    Calcula embeddings semánticos para las tarjetas
+    """
+    if len(cards_data) < 2 or not SENTENCE_TRANSFORMER_AVAILABLE:
+        return None
+        
+    model = load_embedding_model()
+    if model is None:
+        return None
+        
+    # Reconstruir documentos
+    documents = [f"{q} {a}" for _, q, a in cards_data]
+    
+    try:
+        embeddings = model.encode(documents)
+        return embeddings
+    except Exception as e:
+        st.warning(f"Error calculando embeddings: {e}")
+        return None
+
+def compute_embeddings_from_cards(cards: List[Card]) -> Optional[np.ndarray]:
+    """Wrapper para compute_embeddings"""
+    cards_data = tuple((c.id, c.question, c.answer) for c in cards)
+    return compute_embeddings(cards_data)
 
 
 
@@ -1789,12 +1833,37 @@ def page_semantic_graph():
         st.warning("Necesitas al menos 2 tarjetas para construir el grafo.")
         return
     
-    if st.button("🔄 Reconstruir Grafo", type="primary"):
-        with st.spinner("Calculando TF-IDF y similitudes..."):
-            tfidf_matrix, vectorizer = compute_tfidf_from_cards(state.cards)
-            if tfidf_matrix is not None:
-                state.tfidf_matrix = tfidf_matrix
-                state.similarity_matrix = compute_similarity_matrix(tfidf_matrix)
+    col_method, col_btn = st.columns([2, 1])
+    
+    with col_method:
+        method = st.radio("Método de Similitud", ["TF-IDF (Clásico)", "Embeddings (IA)"], horizontal=True)
+    
+    with col_btn:
+        st.write("") # Spacer
+        st.write("") 
+        if st.button("🔄 Reconstruir Grafo", type="primary", use_container_width=True):
+            with st.spinner(f"Calculando similitudes usando {method}..."):
+                if method == "TF-IDF (Clásico)":
+                    tfidf_matrix, vectorizer = compute_tfidf_from_cards(state.cards)
+                    if tfidf_matrix is not None:
+                        state.tfidf_matrix = tfidf_matrix
+                        state.similarity_matrix = compute_similarity_matrix(tfidf_matrix)
+                        st.success("Grafo reconstruido con TF-IDF.")
+                else: # Embeddings
+                    if not SENTENCE_TRANSFORMER_AVAILABLE:
+                        st.error("La librería 'sentence-transformers' no está instalada. Usando TF-IDF por defecto.")
+                        tfidf_matrix, vectorizer = compute_tfidf_from_cards(state.cards)
+                        if tfidf_matrix is not None:
+                            state.tfidf_matrix = tfidf_matrix
+                            state.similarity_matrix = compute_similarity_matrix(tfidf_matrix)
+                    else:
+                        embeddings = compute_embeddings_from_cards(state.cards)
+                        if embeddings is not None:
+                            # Embeddings ya es una matriz densa, compute_similarity_matrix funciona igual
+                            state.similarity_matrix = compute_similarity_matrix(embeddings)
+                            st.success("Grafo reconstruido con Embeddings Semánticos.")
+                        else:
+                            st.error("Error calculando embeddings.")
     
     # Heatmap
     st.subheader("Mapa de Calor de Similitudes")
