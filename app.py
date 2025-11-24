@@ -1725,17 +1725,37 @@ def page_semantic_graph():
     
     threshold = st.slider("Umbral de similitud", 0.0, 1.0, 0.3, 0.05)
     
-    # Crear grafo con NetworkX
-    G = nx.Graph()
-    
-    for i, card in enumerate(state.cards):
-        G.add_node(i, label=card.question[:30], title=card.question,
-                  size=10 + card.UIC_local * 20)
-    
-    for i in range(n):
-        for j in range(i+1, n):
-            if state.similarity_matrix[i, j] > threshold:
-                G.add_edge(i, j, weight=state.similarity_matrix[i, j])
+    if state.similarity_matrix is not None and state.similarity_matrix.size > 0 and not np.all(np.isnan(state.similarity_matrix)):
+        # Crear grafo con NetworkX
+        G = nx.Graph()
+        n = len(state.cards)
+        
+        for i, card in enumerate(state.cards):
+            G.add_node(i, label=card.question[:30], title=card.question,
+                      size=10 + card.UIC_local * 20)
+        
+        for i in range(n):
+            for j in range(i+1, n):
+                if i < state.similarity_matrix.shape[0] and j < state.similarity_matrix.shape[1]:
+                    if state.similarity_matrix[i, j] > threshold:
+                        G.add_edge(i, j, weight=state.similarity_matrix[i, j])
+        
+        # Visualizar con pyvis
+        try:
+            net = Network(height="600px", width="100%", bgcolor="#222222", font_color="white")
+            net.from_nx(G)
+            # Guardar en archivo temporal
+            path = os.path.join("data", "graph.html")
+            net.save_graph(path)
+            
+            with open(path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            
+            st.components.v1.html(html_content, height=600)
+        except Exception as e:
+            st.error(f"Error visualizando grafo: {e}")
+    else:
+        st.info("Calcula el grafo primero para ver la visualización interactiva.")
     
     # Visualizar con pyvis
     net = Network(height="600px", width="100%", bgcolor="#222222", font_color="white")
