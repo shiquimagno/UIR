@@ -33,8 +33,8 @@ class ReviewHistory:
     """Registro de un repaso individual"""
     timestamp: str
     grade: int  # 0=Again, 1=Hard, 2=Good, 3=Easy
-    interval: int  # intervalo en días
-    ease: float  # factor de facilidad
+    interval: int = 0  # intervalo en días
+    ease: float = 2.5  # factor de facilidad
     time_taken: float = 0.0  # segundos
     reading_time: float = 0.0  # opcional
     P_recall: float = 0.0  # opcional
