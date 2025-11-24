@@ -802,6 +802,45 @@ def page_dashboard():
     
     st.markdown("---")
     
+    # Gamificación
+    st.subheader("🏆 Tu Progreso")
+    
+    # Calcular XP y Nivel
+    total_reviews = sum(len(c.history) for c in state.cards)
+    xp = total_reviews * 10  # 10 XP por repaso
+    level = int(xp / 100) + 1
+    xp_next_level = level * 100
+    progress = (xp % 100) / 100
+    
+    col_g1, col_g2 = st.columns([1, 3])
+    
+    with col_g1:
+        st.metric("Nivel", level)
+        st.metric("XP Total", xp)
+    
+    with col_g2:
+        st.write(f"Progreso al Nivel {level + 1}")
+        st.progress(progress)
+        
+        # Badges
+        badges = []
+        if total_reviews >= 10: badges.append("🥉 Principiante (10 repasos)")
+        if total_reviews >= 50: badges.append("🥈 Estudioso (50 repasos)")
+        if total_reviews >= 100: badges.append("🥇 Experto (100 repasos)")
+        if total_reviews >= 500: badges.append("💎 Maestro (500 repasos)")
+        
+        streak = compute_streak(state.cards)
+        if streak >= 3: badges.append("🔥 En Racha (3 días)")
+        if streak >= 7: badges.append("🔥 Imparable (7 días)")
+        
+        if badges:
+            st.write("**Medallas Desbloqueadas:**")
+            st.success(" | ".join(badges))
+        else:
+            st.info("Sigue repasando para desbloquear medallas.")
+            
+    st.markdown("---")
+    
     # Botón de inicio rápido
     if st.button("🚀 Empezar Sesión de Repaso", type="primary", use_container_width=True):
         st.session_state.current_page = "Sesión de Repaso"
@@ -1239,31 +1278,52 @@ def page_review_session():
     # Atajos de teclado (JS Injection)
     st.components.v1.html("""
     <script>
-    document.addEventListener('keydown', function(e) {
+    const doc = window.parent.document;
+    doc.addEventListener('keydown', function(e) {
         // Space -> Mostrar Respuesta
         if (e.code === 'Space') {
-            const btnShow = Array.from(window.parent.document.querySelectorAll('button')).find(el => el.innerText.includes('Mostrar Respuesta'));
-            if (btnShow) btnShow.click();
+            const buttons = Array.from(doc.querySelectorAll('button'));
+            const btnShow = buttons.find(el => el.innerText.includes('Mostrar Respuesta'));
+            if (btnShow) {
+                btnShow.click();
+                e.preventDefault();
+            }
         }
         // 1 -> Again
         if (e.key === '1') {
-            const btnAgain = Array.from(window.parent.document.querySelectorAll('button')).find(el => el.innerText.includes('Again'));
-            if (btnAgain) btnAgain.click();
+            const buttons = Array.from(doc.querySelectorAll('button'));
+            const btnAgain = buttons.find(el => el.innerText.includes('Again'));
+            if (btnAgain) {
+                btnAgain.click();
+                e.preventDefault();
+            }
         }
         // 2 -> Hard
         if (e.key === '2') {
-            const btnHard = Array.from(window.parent.document.querySelectorAll('button')).find(el => el.innerText.includes('Hard'));
-            if (btnHard) btnHard.click();
+            const buttons = Array.from(doc.querySelectorAll('button'));
+            const btnHard = buttons.find(el => el.innerText.includes('Hard'));
+            if (btnHard) {
+                btnHard.click();
+                e.preventDefault();
+            }
         }
         // 3 -> Good
         if (e.key === '3') {
-            const btnGood = Array.from(window.parent.document.querySelectorAll('button')).find(el => el.innerText.includes('Good'));
-            if (btnGood) btnGood.click();
+            const buttons = Array.from(doc.querySelectorAll('button'));
+            const btnGood = buttons.find(el => el.innerText.includes('Good'));
+            if (btnGood) {
+                btnGood.click();
+                e.preventDefault();
+            }
         }
         // 4 -> Easy
         if (e.key === '4') {
-            const btnEasy = Array.from(window.parent.document.querySelectorAll('button')).find(el => el.innerText.includes('Easy'));
-            if (btnEasy) btnEasy.click();
+            const buttons = Array.from(doc.querySelectorAll('button'));
+            const btnEasy = buttons.find(el => el.innerText.includes('Easy'));
+            if (btnEasy) {
+                btnEasy.click();
+                e.preventDefault();
+            }
         }
     });
     </script>
@@ -1804,15 +1864,7 @@ def page_semantic_graph():
     else:
         st.info("Calcula el grafo primero para ver la visualización interactiva.")
     
-    # Visualizar con pyvis
-    net = Network(height="600px", width="100%", bgcolor="#222222", font_color="white")
-    net.from_nx(G)
-    net.save_graph("data/graph.html")
-    
-    with open("data/graph.html", 'r', encoding='utf-8') as f:
-        html_content = f.read()
-    
-    st.components.v1.html(html_content, height=600)
+
 
 def page_algorithm_comparison():
     """Comparación de algoritmos de scheduling"""
