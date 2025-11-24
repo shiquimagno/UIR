@@ -1255,7 +1255,7 @@ def page_review_session():
         review_mode = st.selectbox(
             "Elige cómo quieres repasar:",
             [
-                "Pendientes (por fecha) - RECOMENDADO",
+                "📅 Repaso Diario (Anki+UIR)",
                 "Aleatorio",
                 "Por tag específico",
                 "Tarjetas difíciles (éxito < 50%)",
@@ -1268,7 +1268,7 @@ def page_review_session():
         today = datetime.now()
         cards_to_review_indices = []
         
-        if review_mode == "Pendientes (por fecha) - RECOMENDADO":
+        if review_mode == "📅 Repaso Diario (Anki+UIR)":
             # Ordenar por fecha de revisión
             pending = []
             for i, c in enumerate(state.cards):
@@ -1330,8 +1330,8 @@ def page_review_session():
             btn_text = "🚀 Comenzar Repaso"
             if review_mode == "Solo tarjetas nuevas":
                 btn_text = "🚀 Repasar Nuevas"
-            elif review_mode.startswith("Pendientes"):
-                btn_text = "🚀 Repasar Pendientes"
+            elif "Repaso Diario" in review_mode:
+                btn_text = "🚀 Comenzar Repaso Diario"
                 
             if st.button(btn_text, type="primary", use_container_width=True):
                 if cards_to_review_indices:
