@@ -1474,10 +1474,7 @@ def page_analytics():
                 
                 tag_stats[tag]['cards'] += 1
     
-    # Si es "Again" (grade=0), volver a agregar la tarjeta al final de la cola
-    if grade == 0:
-        current_card_idx = session["cards_to_review"][session["current_card_idx"]]
-        session["cards_to_review"].append(current_card_idx)
+
                 tag_stats[tag]['reviews'] += len(card.history)
                 
                 for r in card.history:
