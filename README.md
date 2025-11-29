@@ -71,16 +71,6 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-La aplicación se abrirá automáticamente en `http://localhost:8501`
-
-## ☁️ Despliegue en Streamlit Cloud
-
-1. Sube el repositorio a GitHub
-2. Ve a [share.streamlit.io](https://share.streamlit.io)
-3. Conecta tu repositorio
-4. Selecciona `app.py` como archivo principal
-5. ¡Despliega!
-
 ## 📖 Guía de Uso
 
 ### 1. Crear Tarjetas
@@ -214,24 +204,6 @@ vectorizer = TfidfVectorizer(
 5. ✅ Simular 30 días
 6. ✅ Exportar estado
 
-## 🐛 Troubleshooting
-
-**Error: "No module named 'streamlit'"**
-```bash
-pip install -r requirements.txt
-```
-
-**Error: "FileNotFoundError: data/state.json"**
-- Normal en primera ejecución
-- Se crea automáticamente al guardar
-
-**Grafo no se muestra**
-- Verificar que pyvis esté instalado
-- Revisar permisos de escritura en `data/`
-
-**TF-IDF falla con pocas tarjetas**
-- Necesitas al menos 2 tarjetas
-- Añadir más contenido textual
 
 ## 📚 Referencias
 
@@ -239,16 +211,6 @@ pip install -r requirements.txt
 - Algoritmo Anki/SM-2: [supermemo.com](https://www.supermemo.com/en/archives1990-2015/english/ol/sm2)
 - TF-IDF: [scikit-learn.org](https://scikit-learn.org/stable/modules/feature_extraction.html#tfidf-term-weighting)
 
-## 🤝 Contribuciones
-
-Mejoras futuras sugeridas:
-- [ ] Implementar calibración real con scipy.optimize
-- [ ] Añadir embeddings (sentence-transformers) como alternativa a TF-IDF
-- [ ] Soporte multi-usuario
-- [ ] API REST para integración con RemNote/Anki
-- [ ] Modo oscuro/claro
-- [ ] Estadísticas avanzadas (curvas de aprendizaje)
-- [ ] Atajos de teclado (1/2/3/4 para calificar)
 
 ## 📄 Licencia
 
