@@ -1,0 +1,816 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+
+\title{Modelo Propuesto: Sistema de Repaso Espaciado con UIR/UIC (Shiqui)}
+\author{Sistema UIR/UIC}
+\date{\today}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definición}
+\newtheorem{theorem}{Teorema}
+\newtheorem{proposition}{Proposición}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Modelo Propuesto (Shiqui)}
+
+\subsection{Definición Formal de la Unidad Internacional de Retención (UIR)}
+
+\subsubsection{Objetivo}
+
+Proponer una unidad con dimensiones de tiempo (días) para cuantificar la retención de información, que sea interpretable y comparable entre diferentes contenidos, usuarios y contextos de aprendizaje.
+
+\subsubsection{Convención y Derivación}
+
+La UIR se fundamenta en la \textbf{curva de olvido de Ebbinghaus} (1885), que describe cómo la probabilidad de recordar información disminuye exponencialmente con el tiempo:
+
+\begin{equation}
+R(t) = e^{-\frac{t}{S}}
+\end{equation}
+
+donde:
+\begin{itemize}
+    \item $R(t)$ es la probabilidad de retención en el tiempo $t$
+    \item $t$ es el tiempo transcurrido desde el aprendizaje (en días)
+    \item $S$ es la \textit{fuerza de la memoria} (constante de decaimiento)
+\end{itemize}
+
+\begin{definition}[Unidad Internacional de Retención (UIR)]
+La UIR se define como el tiempo característico de decaimiento de la memoria, derivado de despejar $S$ en la ecuación de Ebbinghaus:
+
+\begin{equation}
+\text{UIR} = -\frac{t}{\ln(P)}
+\end{equation}
+
+donde:
+\begin{itemize}
+    \item $t$ es el tiempo transcurrido desde el último repaso (días)
+    \item $P \in [0,1]$ es la probabilidad de recordar la información
+    \item $\text{UIR}$ se mide en días
+\end{itemize}
+\end{definition}
+
+\begin{tcolorbox}[colback=blue!5!white,colframe=blue!75!black,title=Interpretación Física]
+La UIR representa el \textbf{tiempo medio de retención}: el tiempo en el cual la probabilidad de recordar cae a $e^{-1} \approx 0.368$ (aproximadamente 37\%).
+
+\begin{itemize}
+    \item \textbf{UIR alta} (ej. 14 días): Retención fuerte, el conocimiento persiste más tiempo
+    \item \textbf{UIR baja} (ej. 3 días): Retención débil, se olvida rápidamente
+    \item \textbf{UIR de referencia}: $\text{UIR}_{\text{inicial}} = 7.0$ días (valor base para normalización)
+\end{itemize}
+\end{tcolorbox}
+
+\subsubsection{Implementación Computacional}
+
+En la práctica, se aplica un suavizado de Laplace para evitar singularidades cuando $P \to 0$ o $P \to 1$:
+
+\begin{equation}
+P_{\text{smooth}} = \text{clip}(P, \epsilon, 1-\epsilon)
+\end{equation}
+
+\begin{equation}
+\text{UIR} = \max\left(1.0, -\frac{t}{\ln(P_{\text{smooth}})}\right)
+\end{equation}
+
+con $\epsilon = 0.01$ y un mínimo de 1 día.
+
+\textbf{Código de referencia:} \texttt{app.py}, líneas 214-233.
+
+\subsubsection{Justificación de UIR$_{\text{inicial}} = 7.0$ días}
+
+El valor de referencia de 7 días se eligió por las siguientes razones:
+
+\begin{enumerate}
+    \item \textbf{Neutralidad inicial}: Para tarjetas nuevas con $\text{UIR}_{\text{effective}} = 7.0$, el ratio $\frac{\text{UIR}_{\text{effective}}}{\text{UIR}_{\text{inicial}}} = 1.0$ no modifica el intervalo calculado por Anki.
+    
+    \item \textbf{Compatibilidad con Anki SM-2}: El segundo intervalo en Anki clásico es de 6 días, cercano a 7, lo que facilita la transición.
+    
+    \item \textbf{Escalabilidad}: Permite que tarjetas bien aprendidas ($\text{UIR}_{\text{effective}} = 14$) dupliquen sus intervalos ($\text{ratio} = 2.0$), mientras que tarjetas difíciles ($\text{UIR}_{\text{effective}} = 3.5$) los reduzcan a la mitad ($\text{ratio} = 0.5$).
+    
+    \item \textbf{Fundamentación psicológica}: 7 días representa aproximadamente una semana, un ciclo natural de revisión en sistemas de aprendizaje espaciado.
+\end{enumerate}
+
+\textbf{Código de referencia:} \texttt{app.py}, línea 575.
+
+\subsection{Unidad de Comprensión (UIC) y Grafo Semántico}
+
+\subsubsection{Construcción del Grafo de Conocimiento}
+
+El sistema construye un \textbf{grafo semántico} donde:
+\begin{itemize}
+    \item Los \textbf{nodos} son tarjetas de estudio
+    \item Las \textbf{aristas} tienen pesos $w_{ij} \in [0,1]$ que representan la similitud semántica entre tarjetas $i$ y $j$
+\end{itemize}
+
+\paragraph{Proceso de vectorización:}
+
+\begin{enumerate}
+    \item \textbf{Preprocesamiento}: Se concatenan pregunta y respuesta de cada tarjeta: $d_i = q_i \oplus a_i$
+    
+    \item \textbf{Filtrado de stop words}: Se eliminan palabras sin valor semántico usando una lista personalizada de 150+ palabras en español.
+    
+    \begin{tcolorbox}[colback=red!5!white,colframe=red!75!black,title=Problema del Texto Estático]
+    \textbf{Limitación detectada:} Sin filtrado, tarjetas semánticamente distintas mostraban similitudes artificialmente altas debido a la repetición de estructuras interrogativas.
+    
+    \textbf{Ejemplo:}
+    \begin{itemize}
+        \item Tarjeta 1: ``¿Qué es el amor?''
+        \item Tarjeta 2: ``¿Qué es una cuerda?''
+    \end{itemize}
+    
+    \textbf{Similitud sin filtrado:} $\approx 60\%$ (por palabras repetidas: ``qué'', ``es'', ``el/una'')
+    
+    \textbf{Similitud con filtrado:} $\approx 5\%$ (solo compara: ``amor'' vs ``cuerda'')
+    
+    \textbf{Solución:} Filtrar interrogativas (qué, cuál, cómo), verbos copulativos (es, son, está), artículos (el, la, un, una) y conectores típicos de preguntas.
+    \end{tcolorbox}
+    
+    \textbf{Código de referencia:} \texttt{app.py}, líneas 235-293 (lista de stop words).
+    
+    \item \textbf{Vectorización TF-IDF}: Se construye una matriz TF-IDF con:
+    \begin{itemize}
+        \item $n$-gramas: unigramas y bigramas (1,2)
+        \item Normalización de acentos Unicode
+        \item Máximo 100 características
+        \item Tokens de 2+ caracteres
+    \end{itemize}
+    
+    \item \textbf{Matriz de similitud coseno}: Se calcula entre todos los pares de vectores:
+    \begin{equation}
+    w_{ij} = \cos(\theta_{ij}) = \frac{\mathbf{v}_i \cdot \mathbf{v}_j}{\|\mathbf{v}_i\| \|\mathbf{v}_j\|} = \frac{\sum_{k=1}^{m} v_{ik} v_{jk}}{\sqrt{\sum_{k=1}^{m} v_{ik}^2} \sqrt{\sum_{k=1}^{m} v_{jk}^2}}
+    \end{equation}
+    
+    donde $\mathbf{v}_i, \mathbf{v}_j \in \mathbb{R}^m$ son los vectores TF-IDF de las tarjetas $i$ y $j$.
+    
+    \item \textbf{Rectificación}: $W = \text{clip}(W, 0, 1)$ y $\text{diag}(W) = 0$ (sin auto-similitud)
+\end{enumerate}
+
+\textbf{Código de referencia:} \texttt{app.py}, líneas 296-390.
+
+\paragraph{Embeddings Semánticos (Alternativa):}
+
+El sistema también soporta embeddings densos mediante modelos transformer:
+
+\begin{equation}
+\mathbf{e}_i = \text{Encoder}(d_i) \in \mathbb{R}^{384}
+\end{equation}
+
+donde $\text{Encoder}$ es un modelo pre-entrenado (ej. \texttt{all-MiniLM-L6-v2}) que mapea texto a vectores densos de 384 dimensiones.
+
+\begin{tcolorbox}[colback=green!5!white,colframe=green!75!black,title=Embeddings vs TF-IDF]
+\textbf{TF-IDF (implementación actual):}
+\begin{itemize}
+    \item Vectores dispersos (sparse) de alta dimensión
+    \item Basado en frecuencia de términos
+    \item Requiere filtrado explícito de stop words
+    \item Rápido y determinista
+\end{itemize}
+
+\textbf{Embeddings Transformer:}
+\begin{itemize}
+    \item Vectores densos de dimensión fija (384)
+    \item Captura semántica contextual
+    \item Procesa texto completo (incluyendo repeticiones)
+    \item Más lento pero más robusto semánticamente
+\end{itemize}
+
+\textbf{Nota:} Los modelos modernos procesan palabras repetidas, pero para UIC usamos TF-IDF con filtrado para enfocarnos en el \textbf{contenido nuclear} y evitar conexiones espurias.
+\end{tcolorbox}
+
+\textbf{Código de referencia:} \texttt{app.py}, líneas 341-378 (embeddings), 382-390 (similitud coseno).
+
+\subsubsection{Definición de UIC (Unidad de Interconexión de Comprensión)}
+
+\begin{definition}[UIC Global]
+El UIC global mide la cohesión semántica promedio de todo el conjunto de tarjetas:
+
+\begin{equation}
+\text{UIC}_{\text{global}} = \frac{\sum_{i=1}^{n} \sum_{j \neq i} w_{ij}}{n(n-1)}
+\end{equation}
+
+donde $n$ es el número total de tarjetas.
+\end{definition}
+
+\begin{definition}[UIC Local]
+El UIC local de una tarjeta $i$ mide su grado de conexión con sus $k$ vecinos más cercanos:
+
+\begin{equation}
+\text{UIC}_{\text{local}}(i) = \frac{1}{\binom{k}{2}} \sum_{p,q \in N_k(i), p < q} w_{pq}
+\end{equation}
+
+donde $N_k(i)$ es el conjunto de los $k$ vecinos más similares a la tarjeta $i$ (por defecto $k=5$).
+\end{definition}
+
+\textbf{Interpretación:}
+\begin{itemize}
+    \item $\text{UIC}_{\text{local}} \approx 0$: Tarjeta aislada, poco conectada con otras
+    \item $\text{UIC}_{\text{local}} \approx 1$: Tarjeta altamente conectada, parte de un cluster semántico denso
+\end{itemize}
+
+\textbf{Código de referencia:} \texttt{app.py}, líneas 392-436.
+
+\subsubsection{Dinámica de Actualización de UIC}
+
+El UIC local se actualiza después de cada repaso según la ecuación diferencial discreta:
+
+\begin{equation}
+\text{UIC}_{t+1} = \text{UIC}_t + \gamma \cdot p_t \cdot (1 - \text{UIC}_t) - \delta \cdot (1 - p_t) \cdot \text{UIC}_t
+\end{equation}
+
+donde:
+\begin{itemize}
+    \item $p_t \in [0,1]$ es la probabilidad de recordar (mapeada desde la calificación)
+    \item $\gamma = 0.1$ es la tasa de refuerzo (incremento por éxito)
+    \item $\delta = 0.05$ es la tasa de decaimiento (decremento por fallo)
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Calificación & Nombre & $p_t$ \\ \midrule
+0 & Again & 0.0 \\
+1 & Hard & 0.4 \\
+2 & Good & 0.7 \\
+3 & Easy & 0.95 \\ \bottomrule
+\end{tabular}
+\caption{Mapeo de calificaciones a probabilidades de recordar}
+\end{table}
+
+\textbf{Código de referencia:} \texttt{app.py}, líneas 454-461.
+
+\subsection{Interacción UIC $\leftrightarrow$ UIR (Modelo Acoplado)}
+
+\subsubsection{Variables y Notación}
+
+El modelo UIR/UIC es un \textbf{sistema dinámico acoplado} donde ambas variables evolucionan mutuamente:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+Variable & Símbolo & Dimensión & Descripción \\ \midrule
+UIR base & $U_b(t)$ & días & Retención intrínseca \\
+UIR efectiva & $U_e(t)$ & días & Retención modulada por UIC \\
+UIC local & $C(t)$ & adimensional & Interconexión semántica $\in [0,1]$ \\
+Probabilidad & $p_t$ & adimensional & Prob. de recordar $\in [0,1]$ \\
+Tiempo & $t$ & repasos & Variable discreta (índice) \\ \bottomrule
+\end{tabular}
+\caption{Variables del modelo acoplado}
+\end{table}
+
+\begin{tcolorbox}[colback=yellow!5!white,colframe=yellow!75!black,title=Dimensionalidad de UIR]
+\textbf{Pregunta:} ¿La UIR es adimensional?
+
+\textbf{Respuesta:} \textbf{No}. La UIR tiene dimensiones de \textbf{tiempo (días)}.
+
+De la ecuación de Ebbinghaus: $R(t) = e^{-t/S}$, despejando $S$:
+\begin{equation}
+S = -\frac{t}{\ln(R)} \quad \Rightarrow \quad [S] = \frac{[\text{días}]}{[\text{adimensional}]} = \text{días}
+\end{equation}
+
+La UIR es el \textbf{tiempo característico} de decaimiento, análogo a la constante de tiempo $\tau$ en circuitos RC.
+
+\textbf{Variables adimensionales:} Solo $C(t)$ (UIC) y $p_t$ son adimensionales.
+\end{tcolorbox}
+
+\subsubsection{Modelo Discreto (Implementable)}
+
+El sistema se actualiza después de cada repaso $t \to t+1$:
+
+\paragraph{Ecuación de UIC:}
+\begin{equation}
+C_{t+1} = C_t + \gamma \cdot p_t \cdot (1 - C_t) - \delta \cdot (1 - p_t) \cdot C_t
+\end{equation}
+
+donde:
+\begin{itemize}
+    \item $\gamma = 0.1$: tasa de refuerzo (crecimiento por éxito)
+    \item $\delta = 0.05$: tasa de decaimiento (reducción por fallo)
+    \item $p_t \in [0,1]$: probabilidad de recordar en el repaso $t$
+\end{itemize}
+
+\paragraph{Ecuación de UIR base:}
+\begin{equation}
+U_{b,t+1} = U_{b,t} + \eta \cdot p_t \cdot C_t
+\end{equation}
+
+donde $\eta = 0.5$ es la tasa de aprendizaje.
+
+\paragraph{Ecuación de UIR efectiva:}
+\begin{equation}
+U_{e,t} = U_{b,t} \times (1 + \alpha \cdot C_t)
+\end{equation}
+
+donde $\alpha = 0.2$ es el peso del refuerzo semántico.
+
+\textbf{Código de referencia:} \texttt{app.py}, líneas 438-470.
+
+\subsubsection{Modelo Continuo (ODE) — Análisis Teórico}
+
+Para análisis de estabilidad, podemos aproximar el modelo discreto como un sistema de EDOs:
+
+\begin{equation}
+\frac{dC}{dt} = \gamma \langle p \rangle (1 - C) - \delta (1 - \langle p \rangle) C
+\end{equation}
+
+\begin{equation}
+\frac{dU_b}{dt} = \eta \langle p \rangle C
+\end{equation}
+
+donde $\langle p \rangle$ es la probabilidad promedio de recordar.
+
+\paragraph{Puntos de equilibrio:}
+
+Para $\frac{dC}{dt} = 0$:
+\begin{equation}
+C^* = \frac{\gamma \langle p \rangle}{\gamma \langle p \rangle + \delta (1 - \langle p \rangle)}
+\end{equation}
+
+\textbf{Casos límite:}
+\begin{itemize}
+    \item Si $\langle p \rangle = 1$ (siempre recuerda): $C^* = \frac{\gamma}{\gamma} = 1$ (máxima conexión)
+    \item Si $\langle p \rangle = 0$ (siempre olvida): $C^* = \frac{0}{\delta} = 0$ (sin conexión)
+    \item Si $\langle p \rangle = 0.7$ (típico): $C^* = \frac{0.1 \times 0.7}{0.1 \times 0.7 + 0.05 \times 0.3} \approx 0.82$
+\end{itemize}
+
+\paragraph{Estabilidad:}
+
+El sistema es \textbf{asintóticamente estable} ya que:
+\begin{itemize}
+    \item $C(t)$ está acotado en $[0,1]$ por construcción
+    \item $U_b(t)$ crece monótonamente pero está limitado por el clipping en el factor de modulación
+\end{itemize}
+
+\textbf{Nota:} En la práctica, el modelo discreto es el implementado. El análisis continuo sirve para entender el comportamiento a largo plazo.
+
+\subsection{Integración con el Algoritmo de Anki (SM-2)}
+
+\subsubsection{Algoritmo Anki Clásico (SM-2 Modificado)}
+
+El algoritmo SM-2 de Anki calcula el próximo intervalo basándose en:
+
+\begin{itemize}
+    \item $n$: número de repeticiones exitosas
+    \item $\text{EF}$: factor de facilidad (Easiness Factor)
+    \item $I_{\text{prev}}$: intervalo anterior
+    \item $q$: calificación (0=Again, 1=Hard, 2=Good, 3=Easy)
+\end{itemize}
+
+\paragraph{Cálculo del intervalo:}
+
+\begin{equation}
+I_{\text{Anki}} = \begin{cases}
+1 & \text{si } q = 0 \text{ (Again)} \\
+\max(1, \lfloor I_{\text{prev}} \times 1.2 \rfloor) & \text{si } q = 1 \text{ (Hard)} \\
+\begin{cases}
+1 & \text{si } n = 0 \\
+6 & \text{si } n = 1 \\
+\lfloor I_{\text{prev}} \times \text{EF} \rfloor & \text{si } n \geq 2
+\end{cases} & \text{si } q = 2 \text{ (Good)} \\
+\begin{cases}
+4 & \text{si } n = 0 \\
+\lfloor I_{\text{prev}} \times \text{EF} \times 1.3 \rfloor & \text{si } n \geq 1
+\end{cases} & \text{si } q = 3 \text{ (Easy)}
+\end{cases}
+\end{equation}
+
+\paragraph{Actualización del Factor de Facilidad:}
+
+\begin{equation}
+\text{EF}_{\text{new}} = \begin{cases}
+\max(1.3, \text{EF} - 0.2) & \text{si } q = 0 \\
+\max(1.3, \text{EF} - 0.15) & \text{si } q = 1 \\
+\text{EF} & \text{si } q = 2 \\
+\text{EF} + 0.1 & \text{si } q = 3
+\end{cases}
+\end{equation}
+
+\textbf{Código de referencia:} \texttt{app.py}, líneas 516-560.
+
+\subsubsection{Algoritmo Híbrido Anki+UIR}
+
+El modelo propuesto \textbf{modula} el intervalo calculado por Anki usando un factor basado en UIR/UIC:
+
+\begin{equation}
+\boxed{I_{\text{final}} = I_{\text{Anki}} \times M_{\text{UIR}}}
+\end{equation}
+
+donde $M_{\text{UIR}}$ es el \textbf{Factor de Modulación UIR}, definido como:
+
+\begin{equation}
+M_{\text{UIR}} = \text{clip}\left(R_{\text{UIR}} \times F_{\text{UIC}} \times F_{\text{success}} \times F_{\text{grade}}, 0.5, 2.5\right)
+\end{equation}
+
+\paragraph{Componentes del Factor de Modulación:}
+
+\begin{enumerate}
+    \item \textbf{Ratio UIR} ($R_{\text{UIR}}$): Retención individual relativa
+    \begin{equation}
+    R_{\text{UIR}} = \frac{\text{UIR}_{\text{effective}}}{\text{UIR}_{\text{inicial}}} = \frac{\text{UIR}_{\text{effective}}}{7.0}
+    \end{equation}
+    
+    \item \textbf{Factor UIC} ($F_{\text{UIC}}$): Refuerzo por conexiones semánticas
+    \begin{equation}
+    F_{\text{UIC}} = 1 + \alpha \times \text{UIC}_{\text{local}}
+    \end{equation}
+    con $\alpha = 0.2$ (peso del refuerzo semántico)
+    
+    \item \textbf{Factor de Éxito} ($F_{\text{success}}$): Ajuste por historial reciente
+    \begin{equation}
+    F_{\text{success}} = 0.7 + 0.6 \times \frac{\text{éxitos en últimos 5 repasos}}{5}
+    \end{equation}
+    Rango: $[0.7, 1.3]$
+    
+    \item \textbf{Factor de Calificación} ($F_{\text{grade}}$): Ajuste por dificultad percibida
+    \begin{equation}
+    F_{\text{grade}} = \begin{cases}
+    0.5 & \text{si } q = 0 \text{ (Again)} \\
+    0.8 & \text{si } q = 1 \text{ (Hard)} \\
+    1.0 & \text{si } q = 2 \text{ (Good)} \\
+    1.3 & \text{si } q = 3 \text{ (Easy)}
+    \end{cases}
+    \end{equation}
+\end{enumerate}
+
+\textbf{Código de referencia:} \texttt{app.py}, líneas 562-642.
+
+\subsubsection{Actualización de UIR Efectiva}
+
+Después de cada repaso, se actualizan las métricas UIR:
+
+\begin{equation}
+\text{UIR}_{\text{base}}^{(t+1)} = \text{UIR}_{\text{base}}^{(t)} + \eta \cdot p_t \cdot \text{UIC}_{\text{local}}
+\end{equation}
+
+\begin{equation}
+\text{UIR}_{\text{effective}} = \text{UIR}_{\text{base}} \times (1 + \alpha \times \text{UIC}_{\text{local}})
+\end{equation}
+
+donde:
+\begin{itemize}
+    \item $\eta = 0.5$ es la tasa de aprendizaje
+    \item $\alpha = 0.2$ es el peso del refuerzo semántico
+    \item $p_t$ es la probabilidad de recordar en el repaso $t$
+\end{itemize}
+
+\textbf{Código de referencia:} \texttt{app.py}, líneas 463-470.
+
+\subsection{Ejemplo Completo de Cálculo}
+
+\subsubsection{Escenario: Tarjeta Bien Aprendida}
+
+\textbf{Estado inicial:}
+\begin{itemize}
+    \item Pregunta: ``¿Qué es la mitocondria?''
+    \item $n = 5$ (repeticiones)
+    \item $\text{EF} = 2.5$
+    \item $I_{\text{prev}} = 38$ días
+    \item $\text{UIR}_{\text{effective}} = 11.2$ días
+    \item $\text{UIC}_{\text{local}} = 0.6$
+    \item Historial: [Good, Good, Good, Good, Good]
+    \item Calificación actual: $q = 2$ (Good)
+\end{itemize}
+
+\paragraph{Paso 1: Calcular intervalo Anki}
+
+Para $q = 2$ (Good) y $n \geq 2$:
+\begin{equation}
+I_{\text{Anki}} = \lfloor I_{\text{prev}} \times \text{EF} \rfloor = \lfloor 38 \times 2.5 \rfloor = 95 \text{ días}
+\end{equation}
+
+\paragraph{Paso 2: Calcular factor de modulación UIR}
+
+\begin{align}
+R_{\text{UIR}} &= \frac{11.2}{7.0} = 1.6 \\
+F_{\text{UIC}} &= 1 + 0.2 \times 0.6 = 1.12 \\
+F_{\text{success}} &= 0.7 + 0.6 \times \frac{5}{5} = 1.3 \\
+F_{\text{grade}} &= 1.0 \text{ (Good)}
+\end{align}
+
+\begin{equation}
+M_{\text{UIR}} = \text{clip}(1.6 \times 1.12 \times 1.3 \times 1.0, 0.5, 2.5) = \text{clip}(2.33, 0.5, 2.5) = 2.33
+\end{equation}
+
+\paragraph{Paso 3: Calcular intervalo final}
+
+\begin{equation}
+I_{\text{final}} = \lfloor 95 \times 2.33 \rfloor = \lfloor 221.35 \rfloor = 221 \text{ días}
+\end{equation}
+
+\paragraph{Comparación:}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Algoritmo & Intervalo & Diferencia \\ \midrule
+Anki Clásico & 95 días & --- \\
+Anki+UIR & 221 días & +132\% \\ \bottomrule
+\end{tabular}
+\caption{Comparación de intervalos para tarjeta bien aprendida}
+\end{table}
+
+\textbf{Interpretación:} La tarjeta tiene excelente retención ($\text{UIR} = 11.2$), está bien conectada ($\text{UIC} = 0.6$) y tiene historial perfecto, por lo que el sistema \textbf{extiende significativamente} el intervalo para optimizar el tiempo de estudio.
+
+\subsection{Límites de Seguridad y Robustez}
+
+\subsubsection{Clipping del Factor de Modulación}
+
+El factor $M_{\text{UIR}}$ se limita al rango $[0.5, 2.5]$ para garantizar:
+
+\begin{itemize}
+    \item \textbf{Límite inferior} ($0.5$): Evita intervalos excesivamente cortos que generarían frustración
+    \item \textbf{Límite superior} ($2.5$): Previene intervalos extremadamente largos que podrían causar olvido
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Escenario & Sin límites & Con límites \\ \midrule
+Factor muy bajo (0.1) & $95 \times 0.1 = 9.5$ días & $95 \times 0.5 = 47.5$ días \\
+Factor muy alto (5.0) & $95 \times 5.0 = 475$ días & $95 \times 2.5 = 237.5$ días \\ \bottomrule
+\end{tabular}
+\caption{Efecto del clipping en intervalos extremos}
+\end{table}
+
+\begin{enumerate}
+    \item \textbf{Análisis teórico}: Restricciones de estabilidad y convergencia
+    \item \textbf{Experimentación empírica}: Pruebas con datos reales de usuarios
+    \item \textbf{Compatibilidad con Anki}: Asegurar que el sistema no desvíe drásticamente del comportamiento base
+\end{enumerate}
+
+\paragraph{Justificación de $\alpha = 0.2$ (Refuerzo semántico):}
+
+\begin{itemize}
+    \item \textbf{Rango teórico}: $\alpha \in [0, 1]$
+    \item \textbf{Efecto}: Con $\text{UIC}_{\text{local}} = 1.0$ (máximo), el factor UIC es $1 + 0.2 \times 1.0 = 1.2$ (+20\%)
+    \item \textbf{Justificación}: Un refuerzo del 20\% es significativo pero no dominante, permitiendo que la retención individual (UIR) siga siendo el factor principal
+    \item \textbf{Ejemplo numérico}: Tarjeta con UIC=0.6 → factor 1.12 (+12\% al intervalo)
+\end{itemize}
+
+\paragraph{Justificación de $\gamma = 0.1$ y $\delta = 0.05$:}
+
+\begin{itemize}
+    \item \textbf{Relación}: $\gamma > \delta$ asegura que el éxito refuerza más que el fallo debilita
+    \item \textbf{Ratio}: $\gamma / \delta = 2.0$ → el refuerzo es el doble del decaimiento
+    \item \textbf{Convergencia}: Con $p = 0.7$ típico, $C^* \approx 0.82$ (equilibrio alto pero no saturado)
+    \item \textbf{Ejemplo numérico}: Después de 5 éxitos consecutivos ($p=0.95$), UIC crece de 0.5 a $\approx 0.68$
+\end{itemize}
+
+\paragraph{Justificación de $\eta = 0.5$:}
+
+\begin{itemize}
+    \item \textbf{Efecto}: Cada repaso exitoso con UIC=1.0 incrementa UIR\_base en 0.5 días
+    \item \textbf{Acumulación}: Después de 10 repasos exitosos, UIR\_base crece $\approx 5$ días
+    \item \textbf{Ejemplo numérico}: Tarjeta nueva (UIR\_base=7.0) → después de 14 repasos exitosos → UIR\_base $\approx 14.0$ (duplica)
+\end{itemize}
+
+\paragraph{Justificación de límites $[0.5, 2.5]$:}
+
+\begin{itemize}
+    \item \textbf{Límite inferior (0.5)}: Evita colapso de intervalos (mínimo 50\% del intervalo Anki)
+    \item \textbf{Límite superior (2.5)}: Evita intervalos excesivos que podrían causar olvido
+    \item \textbf{Rango total}: Factor de 5x entre extremos (0.5 a 2.5)
+    \item \textbf{Ejemplo numérico}: Intervalo Anki de 100 días → rango final [50, 250] días
+\end{itemize}
+
+\subsubsection{Proceso de Calibración}
+
+El sistema incluye una interfaz de calibración manual (\texttt{app.py}, líneas 2131-2165):
+
+\begin{algorithm}
+\caption{Calibración Manual de Parámetros}
+\begin{algorithmic}[1]
+\State \textbf{Input:} Historial de repasos del usuario
+\State \textbf{Output:} Parámetros optimizados $\{\alpha, \gamma, \delta, \eta\}$
+\State
+\For{cada parámetro $\theta \in \{\alpha, \gamma, \delta, \eta\}$}
+    \State Mostrar slider con rango válido
+    \State Simular efecto en tarjetas de ejemplo
+    \State Visualizar impacto en intervalos
+\EndFor
+\State
+\State Usuario ajusta valores observando métricas:
+\State \quad - Carga de trabajo proyectada
+\State \quad - Distribución de intervalos
+\State \quad - Tarjetas problemáticas estimadas
+\State
+\State Guardar configuración personalizada
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Nota:} La calibración automática mediante optimización (ej. \texttt{scipy.optimize}) está planificada como trabajo futuro.
+
+\subsection{Limitaciones del Modelo}
+
+\subsubsection{Limitaciones Teóricas}
+
+\begin{enumerate}
+    \item \textbf{Independencia de tarjetas}: El modelo asume que recordar una tarjeta no afecta directamente la probabilidad de recordar otras, excepto a través de UIC. En realidad, existe transferencia de conocimiento no capturada.
+    
+    \item \textbf{Linealidad del refuerzo semántico}: La relación $F_{\text{UIC}} = 1 + \alpha \cdot C$ es lineal. Podría ser más realista una función no lineal (ej. sigmoide).
+    
+    \item \textbf{Memoria perfecta del historial}: El factor de éxito usa exactamente los últimos 5 repasos. No hay decaimiento temporal de la relevancia de repasos antiguos.
+    
+    \item \textbf{Homogeneidad de contenido}: El modelo no distingue entre tipos de conocimiento (factual, procedimental, conceptual).
+\end{enumerate}
+
+\subsubsection{Limitaciones Prácticas}
+
+\begin{enumerate}
+    \item \textbf{Datos iniciales escasos}: Tarjetas nuevas tienen UIR=7.0 y UIC=0.0 por defecto, sin personalización hasta acumular historial.
+    
+    \item \textbf{Costo computacional de TF-IDF}: Con $n$ tarjetas, la matriz de similitud es $O(n^2)$ en espacio. Para $n > 10,000$ puede ser prohibitivo.
+    
+    \item \textbf{Sensibilidad a stop words}: El filtrado es específico para español. Otros idiomas requieren listas personalizadas.
+    
+    \item \textbf{Calibración manual}: Los parámetros óptimos varían por usuario, pero el sistema usa valores globales por defecto.
+\end{enumerate}
+
+\subsubsection{Ejemplos de Casos Extremos}
+
+\paragraph{Caso 1: Tarjeta aislada con mala retención}
+\begin{itemize}
+    \item UIR\_effective = 3.0 días, UIC\_local = 0.0
+    \item Historial: [Again, Again, Hard, Again, Hard]
+    \item Factor UIR: $(3.0/7.0) \times 1.0 \times 0.7 \times 0.8 \approx 0.24$ → clipped a 0.5
+    \item \textbf{Resultado}: Intervalo reducido a la mitad del Anki base
+\end{itemize}
+
+\paragraph{Caso 2: Tarjeta hiperconectada con retención perfecta}
+\begin{itemize}
+    \item UIR\_effective = 20.0 días, UIC\_local = 1.0
+    \item Historial: [Easy, Easy, Easy, Easy, Easy]
+    \item Factor UIR: $(20.0/7.0) \times 1.2 \times 1.3 \times 1.3 \approx 5.95$ → clipped a 2.5
+    \item \textbf{Resultado}: Intervalo 2.5x el Anki base (máximo permitido)
+\end{itemize}
+
+\subsection{Validación Experimental}
+
+\subsubsection{Acceso al Sistema en Producción}
+
+El modelo UIR/UIC está implementado y disponible públicamente en:
+
+\begin{center}
+\textbf{\url{https://uir-spaced-repetition.streamlit.app}}
+\end{center}
+
+\subsubsection{Guía de Prueba del Sistema}
+
+Para validar experimentalmente el modelo propuesto, siga estos pasos:
+
+\paragraph{Paso 1: Importar Tarjetas de Ejemplo}
+
+\begin{enumerate}
+    \item Acceda a la aplicación web
+    \item Navegue a la sección \textbf{``Crear/Importar Tarjetas''}
+    \item Seleccione \textbf{``Importar desde Texto''}
+    \item Descargue el dataset de ejemplo del repositorio: \texttt{dataset\_ejemplo.md}
+    \item Copie y pegue el contenido (20 tarjetas organizadas por temas)
+    \item Haga clic en \textbf{``Crear Tarjetas''}
+\end{enumerate}
+
+\paragraph{Paso 2: Visualizar Grafo Semántico}
+
+\begin{enumerate}
+    \item Navegue a \textbf{``Grafo Semántico''}
+    \item Observe las conexiones UIC entre tarjetas
+    \item Verifique que tarjetas de biología celular tienen mayor similitud entre sí
+    \item Identifique clusters semánticos por color
+\end{enumerate}
+
+\paragraph{Paso 3: Comparar Algoritmos}
+
+\begin{enumerate}
+    \item Vaya a \textbf{``Comparador de Algoritmos''}
+    \item Seleccione una tarjeta de ejemplo
+    \item Compare intervalos predichos para Anki Clásico vs Anki+UIR
+    \item Observe cómo UIR/UIC modulan los intervalos según el contexto
+\end{enumerate}
+
+\paragraph{Paso 4: Realizar Sesión de Repaso}
+
+\begin{enumerate}
+    \item Inicie una \textbf{``Sesión de Repaso''}
+    \item Seleccione modo \textbf{``Anki+UIR (Recomendado)''}
+    \item Repase las tarjetas calificándolas (Again/Hard/Good/Easy)
+    \item Observe cómo evolucionan UIR\_base y UIC\_local en tiempo real
+\end{enumerate}
+
+\paragraph{Paso 5: Analizar Métricas}
+
+\begin{enumerate}
+    \item Navegue a \textbf{``Analytics''}
+    \item Revise distribuciones de UIR y UIC
+    \item Compare carga de trabajo proyectada entre algoritmos
+    \item Visualice evolución temporal de las métricas
+\end{enumerate}
+
+\subsubsection{Dataset de Ejemplo}
+
+El repositorio incluye \texttt{dataset\_ejemplo.md} con 20 tarjetas organizadas en 5 dominios:
+
+\begin{itemize}
+    \item \textbf{Biología Celular} (5 tarjetas): Alta conexión semántica esperada
+    \item \textbf{Física} (4 tarjetas): Conexiones moderadas
+    \item \textbf{Matemáticas} (4 tarjetas): Conexiones moderadas
+    \item \textbf{Química} (4 tarjetas): Conexiones moderadas
+    \item \textbf{Informática} (3 tarjetas): Conexiones moderadas
+\end{itemize}
+
+Este dataset permite validar:
+\begin{itemize}
+    \item Cálculo correcto de similitud TF-IDF
+    \item Detección de clusters semánticos
+    \item Modulación diferencial de intervalos según UIC
+    \item Evolución de UIR con repasos
+\end{itemize}
+
+\subsubsection{Métricas de Validación}
+
+Para validar el modelo, se recomienda medir:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+Métrica & Descripción & Valor Esperado \\ \midrule
+UIC\_global & Cohesión semántica promedio & 0.15 - 0.30 \\
+UIC\_local (bio) & Conexión en cluster biología & 0.50 - 0.80 \\
+Factor\_UIR inicial & Modulación en tarjetas nuevas & 0.95 - 1.05 \\
+Convergencia UIC & Repasos hasta estabilizar & 5 - 10 \\ \bottomrule
+\end{tabular}
+\caption{Métricas de validación del modelo}
+\end{table}
+
+\section{Referencias Bibliográficas}
+
+\begin{thebibliography}{9}
+
+\bibitem{ebbinghaus1885}
+Ebbinghaus, H. (1885). \textit{Memory: A Contribution to Experimental Psychology}.  
+Disponible en: \url{https://psychclassics.yorku.ca/Ebbinghaus/}
+
+\bibitem{anki_manual}
+Anki Documentation. \textit{Anki Manual - Studying}.  
+Disponible en: \url{https://docs.ankiweb.net/studying.html}
+
+\bibitem{anki_algorithm}
+Anki Documentation. \textit{Deck Options - Algorithm}.  
+Disponible en: \url{https://docs.ankiweb.net/deck-options.html#algorithm}
+
+\bibitem{fsrs}
+Jarrett Ye. (2023). \textit{Free Spaced Repetition Scheduler (FSRS)}.  
+Disponible en: \url{https://github.com/open-spaced-repetition/fsrs4anki}
+
+\bibitem{fsrs_algorithm}
+FSRS Documentation. \textit{The Algorithm}.  
+Disponible en: \url{https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm}
+
+\bibitem{sm2}
+Wozniak, P. A. (1990). \textit{SuperMemo 2 Algorithm}.  
+Disponible en: \url{https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-supermemo-method}
+
+\bibitem{tfidf}
+Salton, G., \& Buckley, C. (1988). \textit{Term-weighting approaches in automatic text retrieval}.  
+Information Processing \& Management, 24(5), 513-523.
+
+\bibitem{cosine_similarity}
+Singhal, A. (2001). \textit{Modern Information Retrieval: A Brief Overview}.  
+IEEE Data Engineering Bulletin, 24(4), 35-43.
+
+\end{thebibliography}
+
+\section{Conclusiones}
+
+El modelo propuesto combina:
+
+\begin{enumerate}
+    \item \textbf{Fundamento teórico}: Derivación rigurosa desde la curva de Ebbinghaus
+    \item \textbf{Compatibilidad}: Integración no invasiva con Anki SM-2
+    \item \textbf{Personalización}: Adaptación a la retención individual (UIR)
+    \item \textbf{Contexto semántico}: Aprovechamiento de conexiones conceptuales (UIC)
+    \item \textbf{Robustez}: Límites de seguridad y manejo de casos extremos
+\end{enumerate}
+
+\textbf{Ventaja clave:} El sistema \textbf{no reemplaza} a Anki, sino que lo \textbf{enriquece} con información contextual y personalizada, manteniendo la estabilidad del algoritmo base mientras optimiza los intervalos según el perfil único de cada usuario y tarjeta.
+
+\end{document}

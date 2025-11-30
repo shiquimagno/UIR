@@ -1,0 +1,617 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{tcolorbox}
+
+% Configuración de listings para Python
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{red},
+    showstringspaces=false,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny\color{gray}
+}
+
+\title{Implementación Técnica del Sistema UIR/UIC\\
+\large Arquitectura, Módulos y Resultados}
+\author{Sistema Shiqui}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Implementación y Resultados}
+
+\subsection{Arquitectura del Sistema}
+
+El sistema UIR/UIC está implementado como una aplicación web interactiva utilizando Python 3.9+ y Streamlit como framework de interfaz de usuario. La arquitectura sigue un patrón modular con separación clara de responsabilidades.
+
+\subsubsection{Diagrama de Arquitectura}
+
+\begin{tcolorbox}[colback=blue!5!white,colframe=blue!75!black,title=Componentes Principales]
+\begin{itemize}
+    \item \textbf{Capa de Presentación}: Streamlit (interfaz web)
+    \item \textbf{Capa de Lógica}: Algoritmos UIR/UIC y Anki
+    \item \textbf{Capa de Datos}: Persistencia JSON + Autenticación
+    \item \textbf{Capa de Análisis}: Procesamiento NLP y visualización
+\end{itemize}
+\end{tcolorbox}
+
+\subsection{Módulos Python Utilizados}
+
+\subsubsection{Módulos Core (Obligatorios)}
+
+\paragraph{Streamlit (\texttt{streamlit})}
+\textbf{Propósito:} Framework de interfaz de usuario para aplicaciones web interactivas.
+
+\textbf{Uso en el sistema:}
+\begin{itemize}
+    \item \texttt{st.session\_state}: Gestión de estado de la aplicación entre recargas
+    \item \texttt{st.sidebar}: Navegación entre páginas
+    \item \texttt{st.cache\_data}: Cacheo de operaciones costosas (TF-IDF, similitud)
+    \item \texttt{st.button}, \texttt{st.selectbox}: Componentes interactivos
+\end{itemize}
+
+\textbf{Ejemplo de uso:}
+\begin{lstlisting}
+# Cacheo de matriz TF-IDF (app.py línea 296)
+@st.cache_data
+def compute_tfidf(cards_data):
+    vectorizer = TfidfVectorizer(
+        max_features=100,
+        stop_words=custom_stop_words
+    )
+    return vectorizer.fit_transform(documents)
+\end{lstlisting}
+
+\paragraph{NumPy (\texttt{numpy})}
+\textbf{Propósito:} Operaciones matriciales y cálculos numéricos eficientes.
+
+\textbf{Uso en el sistema:}
+\begin{itemize}
+    \item Cálculo de similitud coseno entre vectores TF-IDF
+    \item Operaciones sobre matrices de similitud ($n \times n$)
+    \item Clipping de valores (factor UIR en rango [0.5, 2.5])
+    \item Cálculos de UIC global y local
+\end{itemize}
+
+\textbf{Ejemplo de uso:}
+\begin{lstlisting}
+# Clipping del factor de modulación (app.py línea 601)
+return np.clip(total_factor, 0.5, 2.5)
+
+# Cálculo de UIC global (app.py línea 400)
+total_similarity = np.sum(W)
+return total_similarity / (n * (n - 1))
+\end{lstlisting}
+
+\paragraph{Pandas (\texttt{pandas})}
+\textbf{Propósito:} Manipulación y análisis de datos tabulares.
+
+\textbf{Uso en el sistema:}
+\begin{itemize}
+    \item Agregación de historial de repasos por fecha
+    \item Generación de DataFrames para visualización
+    \item Cálculo de estadísticas de usuario (racha, XP, nivel)
+\end{itemize}
+
+\subsubsection{Módulos de Procesamiento de Lenguaje Natural}
+
+\paragraph{scikit-learn (\texttt{sklearn})}
+\textbf{Propósito:} Algoritmos de machine learning y procesamiento de texto.
+
+\textbf{Componentes utilizados:}
+\begin{enumerate}
+    \item \textbf{TfidfVectorizer} (\texttt{feature\_extraction.text})
+    \begin{itemize}
+        \item Convierte texto a vectores TF-IDF
+        \item Filtra stop words personalizadas (150+ palabras en español)
+        \item Genera n-gramas (unigramas y bigramas)
+    \end{itemize}
+    
+    \item \textbf{cosine\_similarity} (\texttt{metrics.pairwise})
+    \begin{itemize}
+        \item Calcula similitud entre todos los pares de tarjetas
+        \item Genera matriz de similitud $W \in \mathbb{R}^{n \times n}$
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Flujo de procesamiento:}
+\begin{lstlisting}
+# 1. Vectorización (app.py línea 319-327)
+vectorizer = TfidfVectorizer(
+    max_features=100,
+    stop_words=custom_stop_words,
+    ngram_range=(1, 2),
+    lowercase=True,
+    strip_accents='unicode'
+)
+tfidf_matrix = vectorizer.fit_transform(documents)
+
+# 2. Similitud (app.py línea 387)
+W = cosine_similarity(tfidf_matrix)
+W = np.clip(W, 0, 1)  # Rectificar a [0,1]
+np.fill_diagonal(W, 0)  # Sin auto-similitud
+\end{lstlisting}
+
+\paragraph{Sentence Transformers (\texttt{sentence\_transformers}) - Opcional}
+\textbf{Propósito:} Embeddings semánticos densos mediante modelos transformer.
+
+\textbf{Uso en el sistema:}
+\begin{itemize}
+    \item Alternativa a TF-IDF para similitud semántica
+    \item Modelo: \texttt{all-MiniLM-L6-v2} (384 dimensiones)
+    \item Cargado opcionalmente si está instalado
+\end{itemize}
+
+\subsubsection{Módulos de Visualización}
+
+\paragraph{Plotly (\texttt{plotly})}
+\textbf{Propósito:} Gráficas interactivas para análisis de datos.
+
+\textbf{Tipos de visualizaciones:}
+\begin{itemize}
+    \item \textbf{Histogramas}: Distribución de UIR y UIC
+    \item \textbf{Gráficas de líneas}: Evolución temporal de métricas
+    \item \textbf{Barras}: Repasos por día, comparación de algoritmos
+    \item \textbf{Heatmaps}: Patrón de actividad (día/hora)
+\end{itemize}
+
+\textbf{Ejemplo:}
+\begin{lstlisting}
+# Histograma de UIR (app.py línea ~950)
+fig_uir = px.histogram(
+    x=uir_values, 
+    nbins=20,
+    title="Distribución de UIR Efectiva"
+)
+st.plotly_chart(fig_uir)
+\end{lstlisting}
+
+\paragraph{NetworkX + PyVis (\texttt{networkx}, \texttt{pyvis})}
+\textbf{Propósito:} Visualización de grafos semánticos.
+
+\textbf{Uso en el sistema:}
+\begin{itemize}
+    \item NetworkX: Construcción del grafo de tarjetas
+    \item PyVis: Renderizado interactivo en HTML
+    \item Nodos: Tarjetas (tamaño proporcional a UIR)
+    \item Aristas: Similitud semántica (grosor proporcional a UIC)
+\end{itemize}
+
+\textbf{Flujo de creación del grafo:}
+\begin{lstlisting}
+# Crear grafo (app.py línea ~1450)
+G = nx.Graph()
+for i, card in enumerate(cards):
+    G.add_node(i, label=card.question[:50], 
+               size=card.UIR_effective * 5)
+
+# Agregar aristas con peso
+for i in range(n):
+    for j in range(i+1, n):
+        if W[i,j] > threshold:
+            G.add_edge(i, j, weight=W[i,j])
+
+# Visualizar con PyVis
+net = Network(height="600px", width="100%")
+net.from_nx(G)
+net.show("graph.html")
+\end{lstlisting}
+
+\subsubsection{Módulos de Persistencia y Utilidades}
+
+\paragraph{JSON (\texttt{json})}
+\textbf{Propósito:} Serialización y deserialización de datos.
+
+\textbf{Uso en el sistema:}
+\begin{itemize}
+    \item Guardar estado de la aplicación (\texttt{state.json})
+    \item Almacenar tarjetas, historial y parámetros
+    \item Backups automáticos diarios
+\end{itemize}
+
+\paragraph{Dataclasses (\texttt{dataclasses})}
+\textbf{Propósito:} Definición de estructuras de datos con tipado.
+
+\textbf{Clases principales:}
+\begin{enumerate}
+    \item \texttt{Card}: Tarjeta de estudio (línea 58-88)
+    \item \texttt{ReviewHistory}: Registro de repaso (línea 36-56)
+    \item \texttt{AppState}: Estado global (línea 98-110)
+    \item \texttt{User}: Usuario del sistema (línea 90-96)
+\end{enumerate}
+
+\textbf{Ejemplo:}
+\begin{lstlisting}
+@dataclass
+class Card:
+    id: str
+    question: str
+    answer: str
+    tags: List[str] = field(default_factory=list)
+    UIR_base: float = 7.0
+    UIR_effective: float = 7.0
+    UIC_local: float = 0.0
+    easiness_factor: float = 2.5
+    interval_days: int = 1
+    repetition_count: int = 0
+    history: List[ReviewHistory] = field(default_factory=list)
+\end{lstlisting}
+
+\subsection{Integración con Streamlit}
+
+\subsubsection{Arquitectura de Páginas}
+
+El sistema utiliza un patrón de navegación basado en \texttt{st.sidebar.radio} con 10 páginas principales:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+Página & Función & Módulos Clave \\ \midrule
+Dashboard & Métricas y resumen & Plotly, Pandas \\
+Crear/Importar & Gestión de tarjetas & JSON, Dataclasses \\
+Sesión de Repaso & Algoritmo de repaso & NumPy, Algoritmos UIR \\
+Analytics & Análisis estadístico & Plotly, Pandas \\
+Grafo Semántico & Visualización de red & NetworkX, PyVis \\
+Comparador & Comparación Anki vs UIR & NumPy \\
+Simulación & Monte Carlo & NumPy, Plotly \\
+Calibración & Ajuste de parámetros & SciPy (opcional) \\
+Export/Import & Gestión de datos & JSON \\
+Investigación & Documentación & Streamlit \\ \bottomrule
+\end{tabular}
+\caption{Páginas del sistema y módulos utilizados}
+\end{table}
+
+\subsubsection{Gestión de Estado}
+
+Streamlit utiliza \texttt{st.session\_state} para mantener datos entre interacciones:
+
+\begin{lstlisting}
+# Inicialización (app.py línea 762-777)
+if 'state' not in st.session_state:
+    st.session_state.state = load_state()
+
+if 'review_session' not in st.session_state:
+    st.session_state.review_session = {
+        'active': False,
+        'current_card_idx': 0,
+        'cards_to_review': [],
+        'show_answer': False
+    }
+\end{lstlisting}
+
+\textbf{Variables de estado principales:}
+\begin{itemize}
+    \item \texttt{state}: AppState con tarjetas y parámetros
+    \item \texttt{authenticated}: Estado de autenticación
+    \item \texttt{review\_session}: Sesión de repaso activa
+    \item \texttt{current\_page}: Página actual
+\end{itemize}
+
+\subsubsection{Cacheo de Operaciones Costosas}
+
+Streamlit proporciona decoradores para cachear resultados:
+
+\begin{enumerate}
+    \item \textbf{@st.cache\_data}: Para datos (TF-IDF, similitud)
+    \begin{lstlisting}
+@st.cache_data
+def compute_tfidf(cards_data):
+    # Operación costosa O(n*m)
+    return tfidf_matrix, vectorizer
+    \end{lstlisting}
+    
+    \item \textbf{@st.cache\_resource}: Para recursos (modelos ML)
+    \begin{lstlisting}
+@st.cache_resource
+def load_embedding_model():
+    return SentenceTransformer('all-MiniLM-L6-v2')
+    \end{lstlisting}
+\end{enumerate}
+
+\textbf{Beneficio:} Reduce tiempo de carga de 5-10s a <1s en recargas.
+
+\subsection{Flujo de Datos}
+
+\subsubsection{Ciclo de Vida de una Tarjeta}
+
+\begin{enumerate}
+    \item \textbf{Creación}
+    \begin{lstlisting}
+# Usuario ingresa pregunta/respuesta
+card = Card(
+    id=str(uuid.uuid4()),
+    question=question,
+    answer=answer,
+    tags=tags.split(',')
+)
+state.cards.append(card)
+    \end{lstlisting}
+    
+    \item \textbf{Cálculo de Similitud}
+    \begin{lstlisting}
+# Recalcular TF-IDF con nueva tarjeta
+tfidf_matrix, _ = compute_tfidf_from_cards(state.cards)
+W = compute_similarity_matrix(tfidf_matrix)
+state.similarity_matrix = W
+    \end{lstlisting}
+    
+    \item \textbf{Actualización de UIC}
+    \begin{lstlisting}
+# Para cada tarjeta, calcular UIC local
+for i, card in enumerate(state.cards):
+    card.UIC_local = compute_UIC_local(W, i, k=5)
+    \end{lstlisting}
+    
+    \item \textbf{Repaso}
+    \begin{lstlisting}
+# Usuario califica tarjeta (0-3)
+interval = anki_uir_adapted_schedule(card, grade, params)
+card.next_review = datetime.now() + timedelta(days=interval)
+update_on_review(card, grade, response_time, params)
+    \end{lstlisting}
+    
+    \item \textbf{Persistencia}
+    \begin{lstlisting}
+# Guardar estado en JSON
+save_state(state)
+    \end{lstlisting}
+\end{enumerate}
+
+\subsubsection{Pipeline de Procesamiento NLP}
+
+\begin{tcolorbox}[colback=green!5!white,colframe=green!75!black,title=Pipeline TF-IDF]
+\textbf{Entrada:} Lista de tarjetas con pregunta + respuesta
+
+\textbf{Pasos:}
+\begin{enumerate}
+    \item Concatenar texto: \texttt{doc = question + " " + answer}
+    \item Filtrar stop words (150+ palabras en español)
+    \item Tokenizar y generar n-gramas (1,2)
+    \item Calcular TF-IDF (máximo 100 features)
+    \item Normalizar acentos Unicode
+    \item Generar matriz dispersa $\mathbb{R}^{n \times m}$
+\end{enumerate}
+
+\textbf{Salida:} Matriz TF-IDF + Vectorizer
+\end{tcolorbox}
+
+\subsection{Funciones Principales}
+
+\subsubsection{Algoritmos de Scheduling}
+
+\paragraph{compute\_anki\_interval\_pure}
+\textbf{Ubicación:} \texttt{app.py}, líneas 516-538
+
+\textbf{Propósito:} Implementación pura del algoritmo SM-2 de Anki.
+
+\textbf{Parámetros:}
+\begin{itemize}
+    \item \texttt{n}: Número de repeticiones exitosas
+    \item \texttt{EF}: Factor de facilidad actual
+    \item \texttt{I\_prev}: Intervalo anterior
+    \item \texttt{grade}: Calificación (0=Again, 1=Hard, 2=Good, 3=Easy)
+\end{itemize}
+
+\textbf{Retorna:} \texttt{(nuevo\_intervalo, nuevo\_EF, nuevo\_n)}
+
+\paragraph{anki\_uir\_adapted\_schedule}
+\textbf{Ubicación:} \texttt{app.py}, líneas 603-642
+
+\textbf{Propósito:} Algoritmo híbrido que modula Anki con UIR/UIC.
+
+\textbf{Flujo:}
+\begin{enumerate}
+    \item Calcular intervalo Anki base
+    \item Calcular factor de modulación UIR
+    \item Aplicar modulación: $I_{final} = I_{Anki} \times M_{UIR}$
+    \item Actualizar tarjeta con nuevo intervalo
+\end{enumerate}
+
+\paragraph{compute\_uir\_modulation\_factor}
+\textbf{Ubicación:} \texttt{app.py}, líneas 562-601
+
+\textbf{Propósito:} Calcular factor de modulación basado en 4 componentes.
+
+\textbf{Componentes:}
+\begin{lstlisting}
+# 1. Ratio UIR
+UIR_ratio = card.UIR_effective / 7.0
+
+# 2. Factor UIC
+UIC_factor = 1 + params['alpha'] * card.UIC_local
+
+# 3. Factor de éxito
+success_rate = compute_success_rate(card)
+success_factor = 0.7 + 0.6 * success_rate
+
+# 4. Factor de calificación
+grade_factors = {0: 0.5, 1: 0.8, 2: 1.0, 3: 1.3}
+grade_factor = grade_factors[grade]
+
+# Combinar y limitar
+total = UIR_ratio * UIC_factor * success_factor * grade_factor
+return np.clip(total, 0.5, 2.5)
+\end{lstlisting}
+
+\subsubsection{Funciones de Análisis Semántico}
+
+\paragraph{compute\_UIC\_local}
+\textbf{Ubicación:} \texttt{app.py}, líneas 403-436
+
+\textbf{Propósito:} Calcular UIC local como similitud promedio entre vecinos.
+
+\textbf{Algoritmo:}
+\begin{lstlisting}
+def compute_UIC_local(W, card_idx, k=5):
+    # Obtener similitudes con otras tarjetas
+    similarities = W[card_idx, :]
+    
+    # Top k vecinos
+    k_actual = min(k, n - 1)
+    top_k_indices = np.argsort(similarities)[-k_actual:]
+    
+    # Similitud promedio entre pares de vecinos
+    neighbor_similarities = []
+    for i in range(len(top_k_indices)):
+        for j in range(i + 1, len(top_k_indices)):
+            neighbor_similarities.append(
+                W[top_k_indices[i], top_k_indices[j]]
+            )
+    
+    return np.mean(neighbor_similarities)
+\end{lstlisting}
+
+\begin{tcolorbox}[colback=yellow!5!white,colframe=yellow!75!black,title=¿Por qué Coseno de Similitud Y Algoritmo de Vecinos?]
+\textbf{Pregunta frecuente:} Si ya calculamos similitud coseno entre todas las tarjetas, ¿por qué necesitamos el algoritmo de vecinos?
+
+\textbf{Respuesta:}
+
+\textbf{1. Coseno de Similitud:}
+\begin{itemize}
+    \item Calcula similitud entre \textbf{TODOS los pares} de tarjetas
+    \item Genera matriz completa $W \in \mathbb{R}^{n \times n}$
+    \item Cada celda $w_{ij}$ = similitud entre tarjeta $i$ y $j$
+\end{itemize}
+
+\textbf{2. Algoritmo de Vecinos (k-NN):}
+\begin{itemize}
+    \item Para cada tarjeta, \textbf{selecciona solo los k más cercanos}
+    \item Mide la \textbf{densidad local} del cluster semántico
+    \item Evita que tarjetas aisladas tengan UIC artificialmente bajo
+\end{itemize}
+
+\textbf{Ejemplo práctico:}
+
+Tarjeta sobre ``mitocondria'' en dataset de 100 tarjetas:
+\begin{itemize}
+    \item Similitud 0.8 con ``cloroplasto'', 0.7 con ``ribosoma'', 0.6 con ``núcleo'' (biología)
+    \item Similitud 0.05 con ``integral'', 0.03 con ``algoritmo'' (matemáticas/CS)
+\end{itemize}
+
+\textbf{Sin vecinos (promedio con todas):}
+\begin{equation}
+\text{UIC} = \frac{0.8 + 0.7 + 0.6 + 0.05 + 0.03 + \ldots}{100} \approx 0.15 \quad \text{(bajo artificial)}
+\end{equation}
+
+\textbf{Con vecinos (k=5, solo cluster biología):}
+\begin{equation}
+\text{UIC} = \frac{0.8 + 0.7 + 0.6 + 0.65 + 0.55}{5} \approx 0.66 \quad \text{(refleja cluster real)}
+\end{equation}
+
+\textbf{Conclusión:} El coseno nos da la matriz completa, pero los vecinos nos permiten enfocarnos en el ``vecindario semántico'' relevante de cada tarjeta, midiendo qué tan densa es su conexión con conceptos relacionados.
+
+\textbf{Analogía:} Es como medir popularidad en una fiesta:
+\begin{itemize}
+    \item \textbf{Coseno}: Mide afinidad con TODAS las personas
+    \item \textbf{Vecinos}: Solo considera tu grupo de amigos cercanos (los que importan)
+\end{itemize}
+\end{tcolorbox}
+
+\subsection{Autenticación y Seguridad}
+
+El sistema incluye un módulo de autenticación (\texttt{auth.py}) con:
+
+\begin{itemize}
+    \item Hash de contraseñas con \texttt{hashlib.sha256}
+    \item Almacenamiento de usuarios en JSON
+    \item Sesiones persistentes con \texttt{st.session\_state}
+    \item Archivos de estado por usuario
+\end{itemize}
+
+\textbf{Flujo de autenticación:}
+\begin{lstlisting}
+# Verificar autenticación (app.py línea 750)
+if not st.session_state.authenticated:
+    auth.show_auth_page()
+    st.stop()
+
+# Cargar estado del usuario
+username = st.session_state.username
+STATE_FILE = auth.get_user_state_file(username)
+state = load_state()
+\end{lstlisting}
+
+\subsection{Resultados y Métricas de Rendimiento}
+
+\subsubsection{Complejidad Computacional}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Operación & Complejidad & Tiempo (n=100) \\ \midrule
+Cálculo TF-IDF & $O(n \cdot m)$ & ~2s \\
+Similitud coseno & $O(n^2 \cdot m)$ & ~1s \\
+UIC local (todas) & $O(n \cdot k \cdot \log n)$ & <0.5s \\
+Scheduling Anki+UIR & $O(1)$ & <1ms \\
+Guardar estado & $O(n)$ & ~100ms \\ \bottomrule
+\end{tabular}
+\caption{Complejidad y tiempos de ejecución}
+\end{table}
+
+\textbf{Nota:} $n$ = número de tarjetas, $m$ = dimensión de vocabulario, $k$ = vecinos (5).
+
+\subsubsection{Optimizaciones Implementadas}
+
+\begin{enumerate}
+    \item \textbf{Cacheo de TF-IDF}: Evita recalcular en cada recarga
+    \item \textbf{Formato cacheable}: Conversión de List[Card] a tuplas hashables
+    \item \textbf{Cálculo vectorizado}: NumPy en lugar de loops Python
+    \item \textbf{Backups asíncronos}: No bloquean la interfaz
+\end{enumerate}
+
+\subsection{Despliegue en Producción}
+
+\subsubsection{Plataforma: Streamlit Cloud}
+
+El sistema está desplegado en: \url{https://uir-spaced-repetition.streamlit.app}
+
+\textbf{Configuración:}
+\begin{itemize}
+    \item \texttt{requirements.txt}: Dependencias Python
+    \item \texttt{.streamlit/config.toml}: Configuración de tema
+    \item Persistencia: Archivos JSON en directorio \texttt{data/}
+\end{itemize}
+
+\subsubsection{Limitaciones de la Plataforma}
+
+\begin{itemize}
+    \item Memoria: 1GB RAM (límite para $n > 1000$ tarjetas)
+    \item CPU: Compartida (TF-IDF puede tardar en datasets grandes)
+    \item Almacenamiento: Efímero (backups se pierden en redeploy)
+\end{itemize}
+
+\textbf{Solución:} Integración futura con base de datos externa (Supabase).
+
+\section{Conclusiones de Implementación}
+
+El sistema UIR/UIC demuestra que:
+
+\begin{enumerate}
+    \item \textbf{Streamlit es adecuado} para prototipos académicos interactivos
+    \item \textbf{scikit-learn} proporciona herramientas robustas para NLP básico
+    \item \textbf{NumPy} permite cálculos matriciales eficientes
+    \item \textbf{La modularidad} facilita mantenimiento y extensión
+\end{enumerate}
+
+\textbf{Código fuente completo:} \url{https://github.com/shiquimagno/UIR}
+
+\end{document}
