@@ -106,7 +106,9 @@ class AppState:
         'eta': 0.05
     })
     tfidf_matrix: Optional[np.ndarray] = None
+    embeddings_matrix: Optional[np.ndarray] = None
     similarity_matrix: Optional[np.ndarray] = None
+    similarity_mode: str = "TF-IDF"  # "TF-IDF" or "Embeddings"
     last_updated: str = field(default_factory=lambda: datetime.now().isoformat())
 
 # ============================================================================
@@ -379,12 +381,16 @@ def compute_embeddings_from_cards(cards: List[Card]) -> Optional[np.ndarray]:
 
 
 
-def compute_similarity_matrix(tfidf_matrix: np.ndarray) -> np.ndarray:
+def compute_similarity_matrix(feature_matrix: np.ndarray) -> np.ndarray:
     """
     Calcula matriz de similitud coseno rectificada [0,1]
     Diagonal = 0 (no auto-similitud)
+    Funciona tanto para TF-IDF como para Embeddings
     """
-    W = cosine_similarity(tfidf_matrix)
+    if feature_matrix is None:
+        return None
+        
+    W = cosine_similarity(feature_matrix)
     W = np.clip(W, 0, 1)  # rectificar a [0,1]
     np.fill_diagonal(W, 0)  # diagonal a 0
     return W
@@ -801,7 +807,40 @@ st.session_state.current_page = st.sidebar.radio("Navegación", pages,
                                                   index=pages.index(st.session_state.current_page))
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("---")
 st.sidebar.markdown(f"**Tarjetas totales:** {len(state.cards)}")
+
+# Selector de Modo de Similitud
+st.sidebar.subheader("⚙️ Configuración UIC")
+similarity_mode = st.sidebar.radio(
+    "Modo de Similitud",
+    ["TF-IDF", "Embeddings"],
+    index=0 if state.similarity_mode == "TF-IDF" else 1,
+    help="TF-IDF: Basado en palabras clave compartidas.\nEmbeddings: Basado en significado semántico profundo."
+)
+
+# Recalcular si cambia el modo
+if similarity_mode != state.similarity_mode:
+    state.similarity_mode = similarity_mode
+    
+    with st.spinner(f"Recalculando similitudes usando {similarity_mode}..."):
+        # Asegurar que tenemos la matriz base necesaria
+        if similarity_mode == "Embeddings":
+            if state.embeddings_matrix is None:
+                state.embeddings_matrix = compute_embeddings_from_cards(state.cards)
+            feature_matrix = state.embeddings_matrix
+        else: # TF-IDF
+            if state.tfidf_matrix is None:
+                state.tfidf_matrix, _ = compute_tfidf_from_cards(state.cards)
+            feature_matrix = state.tfidf_matrix
+            
+        # Calcular nueva matriz de similitud
+        if feature_matrix is not None:
+            state.similarity_matrix = compute_similarity_matrix(feature_matrix)
+            save_state(state)
+            st.success(f"Modo cambiado a {similarity_mode}")
+            st.rerun()
+
 st.sidebar.markdown(f"**UIC global:** {compute_UIC_global(state.similarity_matrix) if state.similarity_matrix is not None else 0:.3f}")
 
 # Mostrar racha
