@@ -2375,6 +2375,81 @@ def page_research():
 
         st.markdown("---")
         
+        # --- GRÁFICOS INTERACTIVOS ---
+        
+        st.subheader("0. Vectorización (Texto $\\to$ Números)")
+        st.markdown("Escribe un texto para ver cómo se transforma en un vector (simulado).")
+        sim_text = st.text_input("Texto de la tarjeta", "La mitocondria es la central energética de la célula")
+        
+        if sim_text:
+            # Simular vector (valores aleatorios pero deterministas basados en hash del texto para estabilidad)
+            np.random.seed(len(sim_text)) 
+            vec_dim = 10
+            vec_values = np.random.rand(vec_dim)
+            vec_names = [f"Dim_{i}" for i in range(vec_dim)]
+            
+            fig_vec = px.bar(x=vec_names, y=vec_values, labels={'x': 'Dimensión', 'y': 'Valor'},
+                            title="Representación Vectorial (Embedding Simulado)")
+            fig_vec.update_layout(height=300)
+            st.plotly_chart(fig_vec, use_container_width=True)
+            
+        st.subheader("1. Matriz de Similitud")
+        st.markdown("Visualiza cómo se compara esta tarjeta con otras 4 en el sistema.")
+        
+        # Matriz simulada 5x5
+        # La tarjeta actual es el índice 0
+        sim_data = np.random.rand(5, 5)
+        # Hacerla simétrica y diagonal 0
+        sim_data = (sim_data + sim_data.T) / 2
+        np.fill_diagonal(sim_data, 0)
+        # Forzar alta similitud con vecinos cercanos para el demo
+        sim_data[0, 1] = 0.85
+        sim_data[1, 0] = 0.85
+        sim_data[0, 2] = 0.70
+        sim_data[2, 0] = 0.70
+        
+        fig_matrix = px.imshow(sim_data, 
+                              labels=dict(x="Tarjeta ID", y="Tarjeta ID", color="Similitud"),
+                              x=['Actual', 'Vecino 1', 'Vecino 2', 'Card 3', 'Card 4'],
+                              y=['Actual', 'Vecino 1', 'Vecino 2', 'Card 3', 'Card 4'],
+                              color_continuous_scale='Viridis',
+                              title="Matriz de Similitud (Heatmap)")
+        fig_matrix.update_layout(height=400)
+        st.plotly_chart(fig_matrix, use_container_width=True)
+        
+        st.subheader("2. Vecinos y UIC")
+        st.markdown("Visualización espacial de la tarjeta actual (rojo) y sus vecinos (azul).")
+        
+        # Simular reducción de dimensionalidad a 2D
+        # Centro (0,0)
+        # Vecinos distribuidos según similitud (más cerca = más similar)
+        # Distancia ~ 1 - similitud
+        neighbor_coords = [
+            {'name': 'Actual', 'x': 0, 'y': 0, 'sim': 1.0, 'color': 'red'},
+            {'name': 'Vecino 1', 'x': 0.2, 'y': 0.1, 'sim': 0.85, 'color': 'blue'},
+            {'name': 'Vecino 2', 'x': -0.3, 'y': 0.2, 'sim': 0.70, 'color': 'blue'},
+            {'name': 'Card 3', 'x': 0.8, 'y': -0.7, 'sim': 0.20, 'color': 'gray'},
+            {'name': 'Card 4', 'x': -0.9, 'y': -0.5, 'sim': 0.10, 'color': 'gray'},
+        ]
+        df_neighbors = pd.DataFrame(neighbor_coords)
+        
+        fig_neighbors = px.scatter(df_neighbors, x='x', y='y', color='color', size='sim',
+                                  hover_name='name', text='name',
+                                  title="Mapa Semántico Local (2D)",
+                                  size_max=20)
+        # Dibujar líneas desde el centro
+        for i in range(1, len(neighbor_coords)):
+            row = neighbor_coords[i]
+            if row['sim'] > 0.5: # Solo dibujar líneas fuertes
+                fig_neighbors.add_shape(type='line', x0=0, y0=0, x1=row['x'], y1=row['y'],
+                                       line=dict(color='rgba(100,100,100,0.5)', width=2))
+                
+        fig_neighbors.update_traces(textposition='top center')
+        fig_neighbors.update_layout(showlegend=False, height=400)
+        st.plotly_chart(fig_neighbors, use_container_width=True)
+
+        st.markdown("---")
+        
         # Cálculos
         
         # Paso 1: Anki Puro
@@ -2412,6 +2487,18 @@ def page_research():
         c3.metric("Grade Factor", f"{grade_factor:.2f}")
         c4.metric("Factor Total", f"{total_factor:.2f}")
         
+        # Gráfico de Factores (Waterfall o Bar)
+        fig_factors = go.Figure(go.Bar(
+            x=['UIR Ratio', 'UIC Factor', 'Success Factor', 'Grade Factor', 'TOTAL'],
+            y=[uir_ratio, uic_factor, success_factor, grade_factor, total_factor],
+            marker_color=['#3498db', '#9b59b6', '#2ecc71', '#f1c40f', '#e74c3c'],
+            text=[f"{x:.2f}" for x in [uir_ratio, uic_factor, success_factor, grade_factor, total_factor]],
+            textposition='auto',
+        ))
+        fig_factors.update_layout(title="Contribución de Factores al Multiplicador Final",
+                                 yaxis_title="Valor del Factor", height=300)
+        st.plotly_chart(fig_factors, use_container_width=True)
+        
         # Paso 3: Resultado Final
         st.subheader("Paso 3: Intervalo Final")
         
@@ -2427,6 +2514,62 @@ def page_research():
             st.caption(f"📉 El intervalo se redujo para asegurar la retención.")
         else:
             st.caption("⚖️ El intervalo se mantiene igual que en Anki.")
+        
+        # --- GRÁFICO ADICIONAL: Proyección de Intervalos ---
+        st.markdown("---")
+        st.subheader("📈 Proyección: Evolución de Intervalos")
+        st.markdown("Simulación de cómo evolucionarían los intervalos en los próximos 5 repasos.")
+        
+        # Simular 5 repasos futuros
+        reviews_data = []
+        current_ivl = final_ivl
+        current_ef = anki_next_ef
+        current_reps = sim_reps + 1
+        
+        for review_num in range(1, 6):
+            # Simular con calificación "Good" (2) para proyección optimista
+            next_ivl_anki, next_ef, _ = compute_anki_interval_pure(current_reps, current_ef, current_ivl, 2)
+            next_ivl_uir = max(1, round(next_ivl_anki * total_factor))
+            
+            reviews_data.append({
+                'Repaso': f'R{review_num}',
+                'Anki Clásico': next_ivl_anki,
+                'Anki+UIR': next_ivl_uir
+            })
+            
+            current_ivl = next_ivl_uir
+            current_ef = next_ef
+            current_reps += 1
+        
+        df_projection = pd.DataFrame(reviews_data)
+        
+        fig_projection = go.Figure()
+        fig_projection.add_trace(go.Scatter(
+            x=df_projection['Repaso'], 
+            y=df_projection['Anki Clásico'],
+            mode='lines+markers',
+            name='Anki Clásico',
+            line=dict(color='#95a5a6', width=3),
+            marker=dict(size=10)
+        ))
+        fig_projection.add_trace(go.Scatter(
+            x=df_projection['Repaso'], 
+            y=df_projection['Anki+UIR'],
+            mode='lines+markers',
+            name='Anki+UIR',
+            line=dict(color='#e74c3c', width=3),
+            marker=dict(size=10)
+        ))
+        
+        fig_projection.update_layout(
+            title="Comparación de Intervalos Proyectados (próximos 5 repasos)",
+            xaxis_title="Número de Repaso",
+            yaxis_title="Intervalo (días)",
+            height=400,
+            hovermode='x unified'
+        )
+        st.plotly_chart(fig_projection, use_container_width=True)
+
         
         st.info("💡 **Tip:** Descarga `dataset_ejemplo.md` del repositorio de GitHub para probar el sistema rápidamente.")
     
