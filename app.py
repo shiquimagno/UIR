@@ -2348,8 +2348,10 @@ def page_research():
         | Métrica | Descripción | Valor Esperado |
         |---------|-------------|----------------|
         | UIC_global | Cohesión semántica promedio | 0.15 - 0.30 |
-        | UIC_global | Cohesión semántica promedio | 0.15 - 0.30 |
         | UIC_local (bio) | Conexión en cluster biología | 0.50 - 0.80 |
+        """)
+        
+        st.info("💡 **Tip:** Descarga `dataset_ejemplo.md` del repositorio de GitHub para probar el sistema rápidamente.")
         
     with tab5:
         st.header("Simulador Visual Paso a Paso")
@@ -2425,9 +2427,6 @@ def page_research():
             st.caption(f"📉 El intervalo se redujo para asegurar la retención.")
         else:
             st.caption("⚖️ El intervalo se mantiene igual que en Anki.")
-        | Factor_UIR inicial | Modulación en tarjetas nuevas | 0.95 - 1.05 |
-        | Convergencia UIC | Repasos hasta estabilizar | 5 - 10 |
-        """)
         
         st.info("💡 **Tip:** Descarga `dataset_ejemplo.md` del repositorio de GitHub para probar el sistema rápidamente.")
     
