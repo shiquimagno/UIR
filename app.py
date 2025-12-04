@@ -2381,7 +2381,7 @@ def page_research():
         st.markdown("Escribe un texto para ver cómo se transforma en un vector (simulado).")
         sim_text = st.text_input("Texto de la tarjeta", "La mitocondria es la central energética de la célula", key="sim_text_input")
         
-        if sim_text:
+        if sim_text and len(sim_text) > 0:
             # Simular vector (valores aleatorios pero deterministas basados en hash del texto para estabilidad)
             np.random.seed(len(sim_text)) 
             vec_dim = 10
