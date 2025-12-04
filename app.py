@@ -100,7 +100,9 @@ class AppState:
     """Estado global de la aplicación"""
     cards: List[Card] = field(default_factory=list)
     params: Dict[str, float] = field(default_factory=lambda: {
-        'alpha': 0.2,
+        'alpha': 0.2, # Legacy/Fallback
+        'alpha_tfidf': 0.2,
+        'alpha_embeddings': 0.1, # Calibrated for higher similarity
         'gamma': 0.15,
         'delta': 0.02,
         'eta': 0.05
@@ -444,7 +446,10 @@ def compute_UIC_local(W: np.ndarray, card_idx: int, k: int = 5) -> float:
     return np.mean(neighbor_similarities) if neighbor_similarities else 0.0
 
 def update_on_review(card: Card, grade: int, response_time: float, 
-                    reading_time: float, params: Dict[str, float]):
+                    reading_time: float, params: Dict[str, float],
+                    similarity_matrix: Optional[np.ndarray] = None,
+                    cards: List[Card] = None,
+                    similarity_mode: str = "TF-IDF"):
     """
     Actualiza UIC_local, UIR_base, UIR_eff según fórmulas del paper
     
@@ -453,7 +458,10 @@ def update_on_review(card: Card, grade: int, response_time: float,
         grade: 0=Again, 1=Hard, 2=Good, 3=Easy
         response_time: tiempo de respuesta en segundos
         reading_time: tiempo de lectura en segundos
-        params: parámetros del modelo (alpha, gamma, delta, eta)
+        params: parámetros del modelo
+        similarity_matrix: matriz de similitud para propagación
+        cards: lista de todas las tarjetas (para buscar vecinos)
+        similarity_mode: modo actual (TF-IDF vs Embeddings)
     """
     # Mapear grade a probabilidad de recordar
     grade_to_p = {0: 0.0, 1: 0.4, 2: 0.7, 3: 0.95}
@@ -474,7 +482,12 @@ def update_on_review(card: Card, grade: int, response_time: float,
     card.UIR_base = max(1.0, card.UIR_base)
     
     # Calcular UIR_effective
-    alpha = params['alpha']
+    # Seleccionar alpha según el modo
+    if similarity_mode == "Embeddings":
+        alpha = params.get('alpha_embeddings', 0.1)
+    else:
+        alpha = params.get('alpha_tfidf', 0.2)
+        
     card.UIR_effective = card.UIR_base * (1 + alpha * card.UIC_local)
     
     # Registrar en historial
@@ -496,6 +509,38 @@ def update_on_review(card: Card, grade: int, response_time: float,
     # Actualizar metadatos
     card.last_review = datetime.now().isoformat()
     card.review_count += 1
+    
+    # --- Neighbor Propagation (Tarjetas Problemáticas) ---
+    # Si la tarjeta es problemática (Again/Hard) y tenemos contexto semántico
+    if grade < 2 and similarity_matrix is not None and cards is not None:
+        try:
+            # Encontrar índice de la tarjeta actual
+            # Nota: Esto asume que el orden en 'cards' coincide con 'similarity_matrix'
+            # Lo cual es cierto si no se ha reordenado/filtrado la lista global 'state.cards'
+            # Para mayor seguridad, buscamos por ID
+            card_idx = next((i for i, c in enumerate(cards) if c.id == card.id), -1)
+            
+            if card_idx != -1 and card_idx < similarity_matrix.shape[0]:
+                # Obtener vecinos cercanos
+                similarities = similarity_matrix[card_idx, :]
+                # Top 5 (excluyendo self)
+                # argsort ordena ascendente, tomamos los últimos
+                top_indices = np.argsort(similarities)[-6:] # 5 + self
+                top_indices = [i for i in top_indices if i != card_idx][-5:]
+                
+                neighbors_tagged = 0
+                for idx in top_indices:
+                    # Umbral mínimo de similitud para considerar vecino relevante
+                    if similarities[idx] > 0.1: 
+                        neighbor_card = cards[idx]
+                        if "problematic_neighbor" not in neighbor_card.tags:
+                            neighbor_card.tags.append("problematic_neighbor")
+                            neighbors_tagged += 1
+                
+                if neighbors_tagged > 0:
+                    st.toast(f"⚠️ {neighbors_tagged} tarjetas relacionadas marcadas como problemáticas", icon="🔗")
+        except Exception as e:
+            print(f"Error en propagación de vecinos: {e}")
 
 # ============================================================================
 # SCHEDULING ALGORITHMS
@@ -2067,11 +2112,12 @@ def page_research():
     st.title("📚 Investigación: Teoría UIR/UIC")
     
     # Tabs para organizar el contenido
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📖 Modelo Matemático", 
         "💻 Implementación Técnica",
         "🧪 Validación Experimental",
-        "📚 Referencias"
+        "📚 Referencias",
+        "🧮 Simulador Visual"
     ])
     
     with tab1:
@@ -2302,7 +2348,83 @@ def page_research():
         | Métrica | Descripción | Valor Esperado |
         |---------|-------------|----------------|
         | UIC_global | Cohesión semántica promedio | 0.15 - 0.30 |
+        | UIC_global | Cohesión semántica promedio | 0.15 - 0.30 |
         | UIC_local (bio) | Conexión en cluster biología | 0.50 - 0.80 |
+        
+    with tab5:
+        st.header("Simulador Visual Paso a Paso")
+        st.markdown("Experimenta cómo se combinan Anki y UIR para calcular el próximo intervalo.")
+        
+        col_in1, col_in2 = st.columns(2)
+        
+        with col_in1:
+            st.subheader("1. Estado Inicial")
+            sim_interval = st.number_input("Intervalo Actual (días)", 1, 365, 10, key="sim_interval")
+            sim_ef = st.number_input("Ease Factor (EF)", 1.3, 5.0, 2.5, 0.1, key="sim_ef")
+            sim_reps = st.number_input("Repeticiones Previas", 0, 100, 5, key="sim_reps")
+            
+        with col_in2:
+            st.subheader("2. Parámetros UIR")
+            sim_uir = st.number_input("UIR Base (días)", 1.0, 100.0, 14.0, key="sim_uir")
+            sim_uic = st.slider("UIC Local (Conexión Semántica)", 0.0, 1.0, 0.5, key="sim_uic")
+            sim_grade = st.selectbox("Calificación", [0, 1, 2, 3], index=2, 
+                                   format_func=lambda x: ["0: Again", "1: Hard", "2: Good", "3: Easy"][x],
+                                   key="sim_grade")
+
+        st.markdown("---")
+        
+        # Cálculos
+        
+        # Paso 1: Anki Puro
+        st.subheader("Paso 1: Algoritmo Base (Anki/SM-2)")
+        anki_next_ivl, anki_next_ef, _ = compute_anki_interval_pure(sim_reps, sim_ef, sim_interval, sim_grade)
+        
+        st.latex(r"I_{anki} = I_{prev} \times EF")
+        st.info(f"Intervalo Base Anki: **{anki_next_ivl} días** (EF nuevo: {anki_next_ef:.2f})")
+        
+        # Paso 2: Modulación UIR
+        st.subheader("Paso 2: Factor de Modulación UIR")
+        
+        # Recalcular factores manualmente para mostrar
+        alpha = state.params.get('alpha', 0.2)
+        UIR_INICIAL = 7.0
+        
+        # UIR Effective
+        uir_effective = sim_uir * (1 + alpha * sim_uic)
+        
+        # Factores componentes
+        uir_ratio = uir_effective / UIR_INICIAL
+        uic_factor = 1 + alpha * sim_uic
+        success_factor = 1.0 # Simplificado para simulación
+        grade_factors = {0: 0.5, 1: 0.8, 2: 1.0, 3: 1.3}
+        grade_factor = grade_factors.get(sim_grade, 1.0)
+        
+        total_factor = uir_ratio * uic_factor * success_factor * grade_factor
+        total_factor = np.clip(total_factor, 0.5, 2.5)
+        
+        st.latex(r"Factor_{UIR} = \frac{UIR_{eff}}{UIR_{init}} \times (1 + \alpha \cdot UIC) \times F_{grade}")
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("UIR Ratio", f"{uir_ratio:.2f}")
+        c2.metric("UIC Factor", f"{uic_factor:.2f}")
+        c3.metric("Grade Factor", f"{grade_factor:.2f}")
+        c4.metric("Factor Total", f"{total_factor:.2f}")
+        
+        # Paso 3: Resultado Final
+        st.subheader("Paso 3: Intervalo Final")
+        
+        final_ivl = max(1, round(anki_next_ivl * total_factor))
+        
+        st.latex(r"I_{final} = I_{anki} \times Factor_{UIR}")
+        
+        st.success(f"## Intervalo Final: {final_ivl} días")
+        
+        if final_ivl > anki_next_ivl:
+            st.caption(f"🚀 El refuerzo semántico y la buena retención aumentaron el intervalo en {final_ivl - anki_next_ivl} días.")
+        elif final_ivl < anki_next_ivl:
+            st.caption(f"📉 El intervalo se redujo para asegurar la retención.")
+        else:
+            st.caption("⚖️ El intervalo se mantiene igual que en Anki.")
         | Factor_UIR inicial | Modulación en tarjetas nuevas | 0.95 - 1.05 |
         | Convergencia UIC | Repasos hasta estabilizar | 5 - 10 |
         """)
@@ -2555,10 +2677,6 @@ def page_export_import():
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error importando estado: {e}")
-
-# ============================================================================
-# MAIN APP ROUTING
-# ============================================================================
 
 current_page = st.session_state.current_page
 
