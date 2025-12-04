@@ -2375,7 +2375,8 @@ def page_research():
 
         st.markdown("---")
         
-        # --- GRÁFICOS INTERACTIVOS ---
+        
+        # --- GRÁFICOS INTERACTIVOS --- (Updated: 2025-12-04 13:27)
         
         st.subheader("0. Vectorización (Texto $\\to$ Números)")
         st.markdown("Escribe un texto para ver cómo se transforma en un vector (simulado).")
