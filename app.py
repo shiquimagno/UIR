@@ -2375,129 +2375,28 @@ def page_research():
 
         st.markdown("---")
         
-        
-        # --- GRÁFICOS INTERACTIVOS --- (Updated: 2025-12-04 13:27)
+        # --- GRÁFICOS INTERACTIVOS ---
         
         st.subheader("0. Vectorización (Texto $\\to$ Números)")
         st.markdown("Escribe un texto para ver cómo se transforma en un vector (simulado).")
-        sim_text = st.text_input("Texto de la tarjeta", "La mitocondria es la central energética de la célula", key="sim_text_input")
+        sim_text = st.text_input("Texto de la tarjeta", "La mitocondria es la central energética de la célula")
         
-        if sim_text and len(sim_text) > 0:
+        if sim_text:
             # Simular vector (valores aleatorios pero deterministas basados en hash del texto para estabilidad)
             np.random.seed(len(sim_text)) 
             vec_dim = 10
             vec_values = np.random.rand(vec_dim)
             vec_names = [f"Dim_{i}" for i in range(vec_dim)]
             
-            col_vec1, col_vec2 = st.columns(2)
+            fig_vec = px.bar(x=vec_names, y=vec_values, labels={'x': 'Dimensión', 'y': 'Valor'},
+                            title="Representación Vectorial (Embedding Simulado)")
+            fig_vec.update_layout(height=300)
+            st.plotly_chart(fig_vec, use_container_width=True)
             
-            with col_vec1:
-                fig_vec = px.bar(x=vec_names, y=vec_values, labels={'x': 'Dimensión', 'y': 'Valor'},
-                                title="Representación Vectorial (Embedding Simulado)")
-                fig_vec.update_layout(height=300)
-                st.plotly_chart(fig_vec, use_container_width=True)
-            
-            with col_vec2:
-                st.markdown("**Operaciones de Álgebra Lineal:**")
-                
-                # Mostrar el vector como matriz columna
-                st.latex(r"\vec{v} = \begin{bmatrix} " + r" \\ ".join([f"{v:.3f}" for v in vec_values[:5]]) + r" \\ \vdots \end{bmatrix}")
-                
-                # Norma L2
-                norm = np.linalg.norm(vec_values)
-                st.latex(r"||\vec{v}|| = \sqrt{\sum_{i=1}^{n} v_i^2} = " + f"{norm:.3f}")
-                
-                # Vector normalizado
-                vec_normalized = vec_values / norm
-                st.latex(r"\hat{v} = \frac{\vec{v}}{||\vec{v}||}")
-                
-                st.caption(f"📐 Norma L2: {norm:.3f}")
-                st.caption(f"✅ Vector normalizado para similitud coseno")
-            
-            # Mostrar cálculo de similitud coseno con otro vector
-            st.markdown("---")
-            st.subheader("📐 Similitud Coseno (Álgebra Lineal)")
-            
-            # Generar segundo vector para comparación
-            np.random.seed(len(sim_text) + 1)
-            vec2_values = np.random.rand(vec_dim)
-            
-            col_sim1, col_sim2 = st.columns(2)
-            
-            with col_sim1:
-                # Fórmula
-                st.latex(r"\text{sim}(\vec{a}, \vec{b}) = \frac{\vec{a} \cdot \vec{b}}{||\vec{a}|| \cdot ||\vec{b}||}")
-                
-                # Cálculo paso a paso
-                dot_product = np.dot(vec_values, vec2_values)
-                norm_a = np.linalg.norm(vec_values)
-                norm_b = np.linalg.norm(vec2_values)
-                cosine_sim = dot_product / (norm_a * norm_b)
-                
-                st.markdown("**Paso 1: Producto punto**")
-                st.latex(r"\vec{a} \cdot \vec{b} = \sum_{i=1}^{n} a_i \cdot b_i = " + f"{dot_product:.3f}")
-                
-                st.markdown("**Paso 2: Normas**")
-                st.latex(r"||\vec{a}|| = " + f"{norm_a:.3f}, \quad ||\vec{b}|| = " + f"{norm_b:.3f}")
-                
-                st.markdown("**Paso 3: División**")
-                st.latex(r"\text{sim} = \frac{" + f"{dot_product:.3f}" + r"}{" + f"{norm_a:.3f} \times {norm_b:.3f}" + r"} = " + f"{cosine_sim:.3f}")
-                
-            with col_sim2:
-                # Visualización de ángulo
-                angle_deg = np.arccos(np.clip(cosine_sim, -1, 1)) * 180 / np.pi
-                
-                fig_angle = go.Figure()
-                
-                # Vector A
-                fig_angle.add_trace(go.Scatter(
-                    x=[0, 1], y=[0, 0],
-                    mode='lines+markers',
-                    name='Vector A',
-                    line=dict(color='blue', width=3),
-                    marker=dict(size=10)
-                ))
-                
-                # Vector B (rotado según similitud)
-                angle_rad = np.arccos(np.clip(cosine_sim, -1, 1))
-                vec_b_x = np.cos(angle_rad)
-                vec_b_y = np.sin(angle_rad)
-                
-                fig_angle.add_trace(go.Scatter(
-                    x=[0, vec_b_x], y=[0, vec_b_y],
-                    mode='lines+markers',
-                    name='Vector B',
-                    line=dict(color='red', width=3),
-                    marker=dict(size=10)
-                ))
-                
-                # Arco de ángulo
-                theta = np.linspace(0, angle_rad, 20)
-                arc_r = 0.3
-                fig_angle.add_trace(go.Scatter(
-                    x=arc_r * np.cos(theta),
-                    y=arc_r * np.sin(theta),
-                    mode='lines',
-                    name=f'θ = {angle_deg:.1f}°',
-                    line=dict(color='green', width=2, dash='dash')
-                ))
-                
-                fig_angle.update_layout(
-                    title=f"Ángulo entre vectores: {angle_deg:.1f}°",
-                    xaxis=dict(range=[-0.2, 1.2], zeroline=True),
-                    yaxis=dict(range=[-0.2, 1.2], zeroline=True),
-                    height=300,
-                    showlegend=True
-                )
-                
-                st.plotly_chart(fig_angle, use_container_width=True)
-                st.caption(f"🔵 Similitud: {cosine_sim:.3f} → Ángulo: {angle_deg:.1f}°")
-                st.caption(f"💡 Similitud alta = ángulo pequeño")
-        
-        st.markdown("---")
         st.subheader("1. Matriz de Similitud")
         st.markdown("Visualiza cómo se compara esta tarjeta con otras 4 en el sistema.")
         
+        # Matriz simulada 5x5
         # La tarjeta actual es el índice 0
         sim_data = np.random.rand(5, 5)
         # Hacerla simétrica y diagonal 0
