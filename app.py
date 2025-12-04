@@ -178,6 +178,7 @@ def save_state(state: AppState):
     state_dict = {
         'cards': [asdict(card) for card in state.cards],
         'params': state.params,
+        'similarity_mode': getattr(state, 'similarity_mode', 'TF-IDF'),
         'last_updated': datetime.now().isoformat()
     }
     
@@ -203,6 +204,7 @@ def load_state() -> AppState:
         return AppState(
             cards=cards,
             params=state_dict.get('params', AppState().params),
+            similarity_mode=state_dict.get('similarity_mode', 'TF-IDF'),
             last_updated=state_dict.get('last_updated', datetime.now().isoformat())
         )
     except Exception as e:
@@ -782,6 +784,11 @@ if 'review_session' not in st.session_state:
     }
 
 state = st.session_state.state
+
+# Migración en caliente: Asegurar que similarity_mode existe
+if not hasattr(state, 'similarity_mode'):
+    state.similarity_mode = "TF-IDF"
+
 
 # ============================================================================
 # NAVIGATION
